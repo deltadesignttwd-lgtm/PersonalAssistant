@@ -109,7 +109,7 @@ def check_route_disruption():
         if not disruptions:
             return "This route is clear ✅"
         details = "\n\n".join(disruptions)
-        return f"This route is disrupted because:\n{details}"
+        return f"🔴 This route is disrupted because:\n{details}"
     except Exception as e:
         print(f"路線檢查失敗: {e}")
         return f"This route state check failed. You can check manually here: [Citymapper Route]({CITYMAPPER_URL})"
