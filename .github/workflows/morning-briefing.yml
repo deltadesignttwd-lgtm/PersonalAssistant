@@ -4,7 +4,12 @@ on:
   schedule:
     # 06:30 UTC = 07:30 during BST (summer) / 06:30 during GMT (winter)
     - cron: "30 6 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force_route_check:
+        description: "Include the Virgin Active Strand route check even if today isn't Saturday (for testing)"
+        type: boolean
+        default: false
 
 jobs:
   send-briefing:
@@ -25,4 +30,5 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          FORCE_ROUTE_CHECK: ${{ github.event.inputs.force_route_check }}
         run: python morning_briefing.py

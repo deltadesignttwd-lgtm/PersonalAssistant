@@ -12,6 +12,9 @@ LOCAL_TZ = ZoneInfo("Europe/London")
 LAT = 51.4615
 LON = -0.0102
 
+# Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
+CITYMAPPER_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
+
 
 def _parse_iso(ts):
     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -82,11 +85,46 @@ def get_weather_forecast():
         return "N/A", "N/A", "擷取失敗"
 
 
+def check_route_disruption():
+    """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
+    try:
+        # Lewisham 有 Southeastern 直達車到 Charing Cross（步行至 Strand 約 5 分鐘），
+        # 因此只檢查與此路線相關的服務。注意：'charing-cross' 不是有效的 TfL line id
+        # （它是車站，不是路線），查了也不會比對到任何東西，故不使用。
+        tfl_url = "https://api.tfl.gov.uk/Line/Mode/national-rail/Status"
+        res = requests.get(tfl_url, timeout=10)
+        res.raise_for_status()
+        lines = res.json()
+
+        disruptions = []
+        for line in lines:
+            if line.get('id') != 'southeastern':
+                continue
+            for status in line.get('lineStatuses', []):
+                status_desc = status.get('statusSeverityDescription', '')
+                if status_desc.strip().lower() not in ('good service', 'normal service'):
+                    reason = status.get('reason', 'Minor delays reported.')
+                    disruptions.append(f"{line.get('name')}: {reason}")
+
+        if not disruptions:
+            return "This route is clear ✅"
+        details = "\n\n".join(disruptions)
+        return f"This route is disrupted because:\n{details}"
+    except Exception as e:
+        print(f"路線檢查失敗: {e}")
+        return f"This route state check failed. You can check manually here: [Citymapper Route]({CITYMAPPER_URL})"
+
+
 def send_telegram(msg):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("TG_BOT_TOKEN / TG_CHAT_ID 未設定，請確認 repository secrets。")
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+    payload = {
+        "chat_id": TG_CHAT_ID,
+        "text": msg,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    }
     res = requests.post(url, json=payload, timeout=10)
     if not res.ok:
         print(f"Telegram 傳送失敗: {res.status_code} {res.text}")
@@ -94,7 +132,11 @@ def send_telegram(msg):
 
 
 def main():
-    today = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d (%a)")
+    now_local = datetime.now(LOCAL_TZ)
+    today = now_local.strftime("%Y-%m-%d (%a)")
+    is_saturday = now_local.weekday() == 5  # 5 = Saturday
+    force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
+
     curr_price, lowest_price = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
 
@@ -106,9 +148,18 @@ def main():
         f"🌤️ *Lewisham 天氣預報*\n"
         f"• 當前氣溫: `{curr_temp}`\n"
         f"• 今日氣溫區間: `{temp_range}`\n"
-        f"• 降雨提醒: {rain_msg}\n\n"
-        f"祝你有美好的一天！💪"
+        f"• 降雨提醒: {rain_msg}\n"
     )
+
+    if is_saturday or force_route_check:
+        route_status = check_route_disruption()
+        briefing += (
+            f"\n🏋️ *Saturday Route Check (Virgin Active Strand)*\n"
+            f"{route_status}\n\n"
+            f"🔗 [Open Citymapper Route]({CITYMAPPER_URL})\n"
+        )
+
+    briefing += "\n祝你有美好的一天！💪"
     send_telegram(briefing)
 
 
