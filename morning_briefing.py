@@ -131,11 +131,9 @@ def send_telegram(msg):
     res.raise_for_status()
 
 
-def main():
-    now_local = datetime.now(LOCAL_TZ)
+def send_full_briefing(now_local, force_route_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
-    force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
 
     curr_price, lowest_price = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
@@ -161,6 +159,28 @@ def main():
 
     briefing += "\n祝你有美好的一天！💪"
     send_telegram(briefing)
+
+
+def send_route_only_update(now_local):
+    """Saturday 10:30-11:15 高頻路線提醒，只回報路況，不含天氣/電價"""
+    route_status = check_route_disruption()
+    msg = (
+        f"🕐 *Route Check ({now_local.strftime('%H:%M')})*\n"
+        f"{route_status}\n\n"
+        f"🔗 [Open Citymapper Route]({CITYMAPPER_URL})"
+    )
+    send_telegram(msg)
+
+
+def main():
+    now_local = datetime.now(LOCAL_TZ)
+    mode = os.environ.get("MODE", "full").strip().lower()
+    force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
+
+    if mode == "route_only":
+        send_route_only_update(now_local)
+    else:
+        send_full_briefing(now_local, force_route_check)
 
 
 if __name__ == "__main__":
