@@ -14,6 +14,10 @@ on:
         description: "Include the Virgin Active Strand route check even if today isn't Saturday (for testing)"
         type: boolean
         default: false
+      force_office_check:
+        description: "Include the office route check even if today isn't a weekday (for testing)"
+        type: boolean
+        default: false
       mode:
         description: "Message type to send"
         type: choice
@@ -54,4 +58,5 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           MODE: ${{ steps.run_mode.outputs.mode }}
           FORCE_ROUTE_CHECK: ${{ github.event.inputs.force_route_check }}
+          FORCE_OFFICE_CHECK: ${{ github.event.inputs.force_office_check }}
         run: python morning_briefing.py

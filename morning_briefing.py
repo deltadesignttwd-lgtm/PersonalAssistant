@@ -13,7 +13,12 @@ LAT = 51.4615
 LON = -0.0102
 
 # Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
-CITYMAPPER_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
+CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
+
+# Citymapper 路線資訊 (平日通勤: Home 41D Eastdown Park → Canary Wharf [DLR] → Liverpool Street [Elizabeth line])
+# 兩段連結內容已解碼確認：leg1 是 home -> Canary Wharf (DLR)，leg2 是 Canary Wharf -> Liverpool Street (Elizabeth line)
+CITYMAPPER_OFFICE_LEG1_URL = "https://citymapper.com/trip/signature?signature=eJx9U9uO2jAQ%2FZXIryXL%2BBZiXgtSq6LtqhfxsFpZ3thACtjUMWVXiH9fO2RpoFLfMnNm5pw5Ex9RpTwaZ4JiOsiQ3nsVamdjhlBWxIyxOgZHVDnndRM%2FEcd3HApM8SCHO8AjVjIUC63amgR%2FVFb512y%2BUn6BThH45WVttXmJIMRwY5ZpzOMR6boJylapC2MB1%2FSCjxJ71TGygpUdIRklutrK2N0VIxgKSNmt062Ig9qsU9xc%2Bvmo4G0%2FMBAJCk6alzokfGYOdbNSWzmlQHmZVB%2F7WjCUcLGiW7DdbzL7lkatjNIH9RpBCtBTEbyyTaSIKe%2F2wci6dfARpb6nJC8of6Wg1RzcTlZub0NrzHvmvfdho8LC%2Ba28qO5UXIBrgXIi9T16Ou%2F013Eiipt7g%2BgbHk9M2NlwATTNX3i3vVh2wzHlRJB%2Fz0KG9P9n4cCpaFkIlMXNWXoc05mcmyZME3JKzu18XRm5M90yJNnuzbLj3a%2FzjbM6Bp31tV1Kb37v44xoZCrBvBQAUOYMzCJn5lnnpSog18ChVAZXhX5GvRMdkdLam6Z9ArN2%2BCD7%2BSWVXD2N9KMV55WAlgz3nwbDk2yqmqDdwWYPyq%2Fb9xHqM0qAFHkURMgPLMYcxkA%2FAB4DDO%2B%2Fzj9%2F%2F5Qm%2FTG%2BOe%2FIT28FUw8L"
+CITYMAPPER_OFFICE_LEG2_URL = "https://citymapper.com/trip/signature?signature=eJyFUstu2zAQ%2FBWD10YJHyIp%2BVoIaAEjLZACPgQBQUu0zUYmXYpqkhr%2B93IlO36kQG%2FcneXO7OzuUK0Dmk64lORmgpo%2B6Gi9SxlCc5YyxjUp2KHa%2B9B06Yk4ueVEypzeZPgWF0QIilKh0xsD8Mz%2BNmHrfTt5iMGYiPYJ%2FBmUdY15TQU4ha1ZQavHHWpsF7Wr4WfOrxSwYhBQH0kxl%2BXASQQQLoPfKPNqI%2BCftdPhbb7WYakqTgWGCutU6n7ohvAdoRzSG98MSl90%2Bwxxd2Jg7MAgOQEo%2Bn8xVDNV6S5WgKTpdueic4rfXTt5MVpRzaDn2ujmRb9BLeNncmLQrksdUyr4PhplB78fUdXaP3ph4npmnUFPoDjq8FHUMEv0W1X73gHMjoljp%2B%2BtjksfNupymOYevr6DV6oVVMzR0zjpaV80Ly%2F3RUt%2BsS8iiRhvhMr%2FGH9ZuocZt8HWRm3NSMYI2BrM6rDM%2FjlrvWtScLDLupUK5ldvupjGhZKcFU0tMc%2BEzmWWF4xlxWJRZ0RobAqCZW0EOjPz%2BsYxE2w8hpKfH%2Fjo3WQwbzjuaEeAYioyXGSU%2FiDlNBdTIj5hMsX47v7b%2FOvDF2iSnO3GEfj%2BL2T%2BAN8%3D"
 
 
 def _parse_iso(ts):
@@ -85,34 +90,56 @@ def get_weather_forecast():
         return "N/A", "N/A", "擷取失敗"
 
 
+def _get_tfl_line_disruptions(line_ids):
+    """查詢指定 TfL line id 的即時狀態，回傳「非正常服務」的說明清單（可能為空）"""
+    ids = ",".join(line_ids)
+    tfl_url = f"https://api.tfl.gov.uk/Line/{ids}/Status"
+    res = requests.get(tfl_url, timeout=10)
+    res.raise_for_status()
+    lines = res.json()
+
+    disruptions = []
+    for line in lines:
+        for status in line.get('lineStatuses', []):
+            status_desc = status.get('statusSeverityDescription', '')
+            if status_desc.strip().lower() not in ('good service', 'normal service'):
+                reason = status.get('reason', 'Minor delays reported.')
+                disruptions.append(f"{line.get('name')}: {reason}")
+    return disruptions
+
+
 def check_route_disruption():
     """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
     try:
         # Lewisham 有 Southeastern 直達車到 Charing Cross（步行至 Strand 約 5 分鐘），
         # 因此只檢查與此路線相關的服務。注意：'charing-cross' 不是有效的 TfL line id
         # （它是車站，不是路線），查了也不會比對到任何東西，故不使用。
-        tfl_url = "https://api.tfl.gov.uk/Line/Mode/national-rail/Status"
-        res = requests.get(tfl_url, timeout=10)
-        res.raise_for_status()
-        lines = res.json()
-
-        disruptions = []
-        for line in lines:
-            if line.get('id') != 'southeastern':
-                continue
-            for status in line.get('lineStatuses', []):
-                status_desc = status.get('statusSeverityDescription', '')
-                if status_desc.strip().lower() not in ('good service', 'normal service'):
-                    reason = status.get('reason', 'Minor delays reported.')
-                    disruptions.append(f"{line.get('name')}: {reason}")
-
+        disruptions = _get_tfl_line_disruptions(['southeastern'])
         if not disruptions:
             return "This route is clear ✅"
         details = "\n\n".join(disruptions)
         return f"🔴 This route is disrupted because:\n{details}"
     except Exception as e:
         print(f"路線檢查失敗: {e}")
-        return f"This route state check failed. You can check manually here: [Citymapper Route]({CITYMAPPER_URL})"
+        return f"This route state check failed. You can check manually here: [Citymapper Route]({CITYMAPPER_GYM_URL})"
+
+
+def check_office_route_disruption():
+    """檢查平日通勤路線（Lewisham → Canary Wharf [DLR] → Liverpool Street [Elizabeth line]）的即時路況"""
+    try:
+        # 路線由使用者提供的兩個 Citymapper 連結解碼確認：
+        # leg1 = home -> Canary Wharf (DLR)，leg2 = Canary Wharf -> Liverpool Street (Elizabeth line)
+        disruptions = _get_tfl_line_disruptions(['dlr', 'elizabeth'])
+        if not disruptions:
+            return "the route to office is clear ✅"
+        details = "; ".join(disruptions)
+        return f"the route to office is disrupted 🔴 because {details}"
+    except Exception as e:
+        print(f"辦公室路線檢查失敗: {e}")
+        return (
+            "the route to office check failed. You can check manually here: "
+            f"[Leg 1]({CITYMAPPER_OFFICE_LEG1_URL}) / [Leg 2]({CITYMAPPER_OFFICE_LEG2_URL})"
+        )
 
 
 def send_telegram(msg):
@@ -131,9 +158,10 @@ def send_telegram(msg):
     res.raise_for_status()
 
 
-def send_full_briefing(now_local, force_route_check):
+def send_full_briefing(now_local, force_route_check, force_office_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
+    is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
 
     curr_price, lowest_price = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
@@ -149,12 +177,21 @@ def send_full_briefing(now_local, force_route_check):
         f"• 降雨提醒: {rain_msg}\n"
     )
 
+    if is_weekday or force_office_check:
+        office_status = check_office_route_disruption()
+        briefing += (
+            f"\n🚇 *Office Route Check*\n"
+            f"{office_status}\n"
+            f"🔗 [Leg 1: Home → Canary Wharf]({CITYMAPPER_OFFICE_LEG1_URL}) | "
+            f"[Leg 2: Canary Wharf → Liverpool Street]({CITYMAPPER_OFFICE_LEG2_URL})\n"
+        )
+
     if is_saturday or force_route_check:
         route_status = check_route_disruption()
         briefing += (
             f"\n🏋️ *Saturday Route Check (Virgin Active Strand)*\n"
             f"{route_status}\n\n"
-            f"🔗 [Open Citymapper Route]({CITYMAPPER_URL})\n"
+            f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})\n"
         )
 
     briefing += "\n祝你有美好的一天！💪"
@@ -167,7 +204,7 @@ def send_route_only_update(now_local):
     msg = (
         f"🕐 *Route Check ({now_local.strftime('%H:%M')})*\n"
         f"{route_status}\n\n"
-        f"🔗 [Open Citymapper Route]({CITYMAPPER_URL})"
+        f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})"
     )
     send_telegram(msg)
 
@@ -176,11 +213,12 @@ def main():
     now_local = datetime.now(LOCAL_TZ)
     mode = os.environ.get("MODE", "full").strip().lower()
     force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
+    force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"
 
     if mode == "route_only":
         send_route_only_update(now_local)
     else:
-        send_full_briefing(now_local, force_route_check)
+        send_full_briefing(now_local, force_route_check, force_office_check)
 
 
 if __name__ == "__main__":
