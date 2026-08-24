@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -142,7 +143,7 @@ def check_office_route_disruption():
         )
 
 
-def send_telegram(msg):
+def send_telegram(msg, max_attempts=3):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("TG_BOT_TOKEN / TG_CHAT_ID 未設定，請確認 repository secrets。")
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
@@ -152,10 +153,19 @@ def send_telegram(msg):
         "parse_mode": "Markdown",
         "disable_web_page_preview": True,
     }
-    res = requests.post(url, json=payload, timeout=10)
-    if not res.ok:
-        print(f"Telegram 傳送失敗: {res.status_code} {res.text}")
-    res.raise_for_status()
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.post(url, json=payload, timeout=20)
+            if not res.ok:
+                print(f"Telegram 傳送失敗: {res.status_code} {res.text}")
+            res.raise_for_status()
+            return
+        except requests.exceptions.RequestException as e:
+            print(f"Telegram 傳送錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt == max_attempts:
+                raise
+            time.sleep(3 * attempt)
 
 
 def send_full_briefing(now_local, force_route_check, force_office_check):
