@@ -1,0 +1,31 @@
+name: Saturday Route Pings
+
+on:
+  schedule:
+    # Saturday 09:30-09:55 UTC = 10:30-10:55 BST, every 5 min - route-only ping
+    - cron: "30-55/5 9 * * 6"
+    # Saturday 10:00-10:15 UTC = 11:00-11:15 BST, every 3 min - route-only ping
+    - cron: "0-15/3 10 * * 6"
+  workflow_dispatch: {}
+
+jobs:
+  send-ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run route-only ping
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          MODE: route_only
+        run: python morning_briefing.py
