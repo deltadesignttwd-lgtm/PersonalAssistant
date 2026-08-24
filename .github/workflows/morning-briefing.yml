@@ -2,8 +2,8 @@ name: Morning Briefing
 
 on:
   schedule:
-    # 06:30 UTC = 07:30 during BST (summer) / 06:30 during GMT (winter) - full daily briefing
-    - cron: "30 6 * * *"
+    # 06:00 UTC = 07:00 during BST (summer) / 06:00 during GMT (winter) - full daily briefing
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       force_route_check:
