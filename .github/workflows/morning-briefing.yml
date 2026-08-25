@@ -1,9 +1,11 @@
 name: Morning Briefing
 
 on:
-  schedule:
-    # 06:00 UTC = 07:00 during BST (summer) / 06:00 during GMT (winter) - full daily briefing
-    - cron: "0 6 * * *"
+  # No internal "schedule:" trigger here on purpose. GitHub Actions' native cron is
+  # best-effort with no delivery-time guarantee (observed 1-3h delays in practice).
+  # Timing is instead owned by an external scheduler (e.g. cron-job.org) that calls
+  # the GitHub REST API to fire workflow_dispatch at the exact desired time -
+  # workflow_dispatch runs consistently start within seconds, unlike schedule runs.
   workflow_dispatch:
     inputs:
       force_route_check:
