@@ -1,11 +1,9 @@
 name: Saturday Route Pings
 
 on:
-  schedule:
-    # Saturday 09:30-09:55 UTC = 10:30-10:55 BST, every 5 min - route-only ping
-    - cron: "30-55/5 9 * * 6"
-    # Saturday 10:00-10:15 UTC = 11:00-11:15 BST, every 3 min - route-only ping
-    - cron: "0-15/3 10 * * 6"
+  # No internal "schedule:" trigger here on purpose - see README.md. Timing for
+  # both the 10:30-10:55 (every 5 min) and 11:00-11:15 (every 3 min) Saturday
+  # windows is owned by two external cron-job.org jobs calling workflow_dispatch.
   workflow_dispatch: {}
 
 jobs:
