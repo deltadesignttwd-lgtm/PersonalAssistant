@@ -148,15 +148,46 @@ def check_route_disruption():
         return f"This route state check failed. You can check manually here: [Citymapper Route]({CITYMAPPER_GYM_URL})"
 
 
+# DLR 有多條分支（Bank/Tower Gateway<->Lewisham、Bank<->Woolwich Arsenal、
+# Stratford<->Beckton 等），Elizabeth line 則橫跨 Reading/Heathrow 到 Shenfield/Abbey
+# Wood。兩者都可能出現與 Home->Canary Wharf->Liverpool Street 這段路完全無關的通知
+# （原理同 Southeastern 的 Bromley South 案例）。TfL 對自家路線（非 National Rail
+# 委外營運商）回報的 reason 通常是英文描述而非 nationalrail.co.uk 連結，因此改用關鍵字
+# 比對：只有在明確提到已知「不相關」分支/地點時才排除，無法辨識地點則保守地維持標記。
+_IRRELEVANT_OFFICE_ROUTE_KEYWORDS = (
+    # DLR 的其他分支，不在 Lewisham -> Canary Wharf 這段
+    "woolwich arsenal", "beckton", "stratford international", "london city airport",
+    "king george v", "pontoon dock", "cyprus", "gallions reach", "custom house",
+    "prince regent", "royal albert", "west silvertown", "star lane", "abbey road",
+    # Elizabeth line 西/東端遠離 Canary Wharf<->Liverpool Street 核心段的地點
+    "reading", "heathrow", "maidenhead", "slough", "west drayton", "hayes & harlington",
+    "southall", "ealing broadway", "shenfield", "romford", "ilford", "chadwell heath",
+    "gidea park", "harold wood", "brentwood", "seven kings", "goodmayes", "manor park",
+)
+
+
+def _mentions_irrelevant_office_location(reason_text):
+    text = reason_text.lower()
+    return any(kw in text for kw in _IRRELEVANT_OFFICE_ROUTE_KEYWORDS)
+
+
 def check_office_route_disruption():
     """檢查平日通勤路線（Lewisham → Canary Wharf [DLR] → Liverpool Street [Elizabeth line]）的即時路況"""
     try:
         # 路線由使用者提供的兩個 Citymapper 連結解碼確認：
         # leg1 = home -> Canary Wharf (DLR)，leg2 = Canary Wharf -> Liverpool Street (Elizabeth line)
         disruptions = _get_tfl_line_disruptions(['dlr', 'elizabeth'])
-        if not disruptions:
+
+        relevant = []
+        for d in disruptions:
+            if _mentions_irrelevant_office_location(d):
+                print(f"忽略與本路線無關的通知: {d}")
+                continue
+            relevant.append(d)
+
+        if not relevant:
             return "the route to office is clear ✅"
-        details = "; ".join(disruptions)
+        details = "; ".join(relevant)
         return f"the route to office is disrupted 🔴 because {details}"
     except Exception as e:
         print(f"辦公室路線檢查失敗: {e}")
