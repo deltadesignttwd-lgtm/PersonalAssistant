@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import requests
 from datetime import datetime, timedelta, timezone
@@ -109,6 +110,19 @@ def _get_tfl_line_disruptions(line_ids):
     return disruptions
 
 
+# Southeastern 是一個涵蓋整個東南倫敦/肯特郡的大型營運商，Line Status API 回報的是
+# 「整個公司」的狀況，而不是特定路線區段。實測發現 Bromley South（與 Lewisham→Charing
+# Cross 完全無關的另一條支線）的通知會被誤判為「本路線」中斷。因此改用 reason 文字中
+# 常見的 nationalrail.co.uk service-disruptions URL 解析出受影響車站，只有在明確辨識
+# 出的車站「不在」本路線上時才排除；無法辨識車站（例如全線性質的通知）則保守地維持標記。
+_RELEVANT_SOUTHEASTERN_STATION_SLUGS = {"lewisham", "london-bridge", "waterloo-east", "charing-cross"}
+
+
+def _extract_disruption_station_slug(reason_text):
+    match = re.search(r"service-disruptions/([a-z-]+)-\d{8}", reason_text)
+    return match.group(1) if match else None
+
+
 def check_route_disruption():
     """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
     try:
@@ -116,9 +130,18 @@ def check_route_disruption():
         # 因此只檢查與此路線相關的服務。注意：'charing-cross' 不是有效的 TfL line id
         # （它是車站，不是路線），查了也不會比對到任何東西，故不使用。
         disruptions = _get_tfl_line_disruptions(['southeastern'])
-        if not disruptions:
+
+        relevant = []
+        for d in disruptions:
+            slug = _extract_disruption_station_slug(d)
+            if slug and slug not in _RELEVANT_SOUTHEASTERN_STATION_SLUGS:
+                print(f"忽略與本路線無關的 Southeastern 通知（車站: {slug}）: {d}")
+                continue
+            relevant.append(d)
+
+        if not relevant:
             return "This route is clear ✅"
-        details = "\n\n".join(disruptions)
+        details = "\n\n".join(relevant)
         return f"🔴 This route is disrupted because:\n{details}"
     except Exception as e:
         print(f"路線檢查失敗: {e}")
