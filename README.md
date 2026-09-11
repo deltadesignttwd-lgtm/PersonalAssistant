@@ -11,6 +11,9 @@ route pings on Saturday mornings.
 - Current + next-24h-lowest Octopus Agile electricity price (region `_C`,
   London/Lewisham)
 - Lewisham weather (current temp, today's range, rain warning)
+- A link to London's WLW (women loving women) events on Eventbrite - not
+  scraped/checked programmatically (see note below), just a direct link to
+  open and check yourself
 - **Monday-Friday only:** Office Route Check - TfL status for the `dlr` and
   `elizabeth` lines (the actual commute: home -> Canary Wharf via DLR ->
   Liverpool Street via Elizabeth line, decoded from the Citymapper links
@@ -100,3 +103,10 @@ inputs for testing outside their normal day-of-week:
 - The Citymapper links in `morning_briefing.py` are decorative/fallback links
   for the user to open manually if the TfL check itself fails - they are not
   queried programmatically (Citymapper has no public routing-status API).
+- The Eventbrite WLW-events link is also decorative only: `eventbrite.co.uk`
+  sits behind AWS WAF bot-challenge protection (a CAPTCHA "Human
+  Verification" page) that blocks both plain HTTP requests and a headless
+  Playwright browser, and Eventbrite's official public API was deprecated in
+  2019 and only supports querying events you organize yourself. There's no
+  lightweight way to programmatically check which events are on today, so
+  the message just links to the search page instead.
