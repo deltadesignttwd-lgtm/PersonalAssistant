@@ -248,6 +248,7 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
     is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
+    is_thu_or_fri = now_local.weekday() in (3, 4)  # 3 = Thursday, 4 = Friday
 
     curr_price, lowest_price = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
@@ -261,9 +262,13 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
         f"• 當前氣溫: `{curr_temp}`\n"
         f"• 今日氣溫區間: `{temp_range}`\n"
         f"• 降雨提醒: {rain_msg}\n"
-        f"\n👭 *WLW Events Today*\n"
-        f"🔗 [Check today's London WLW events]({EVENTBRITE_WLW_URL})\n"
     )
+
+    if is_thu_or_fri:
+        briefing += (
+            f"\n👭 *WLW Events Today*\n"
+            f"🔗 [Check today's London WLW events]({EVENTBRITE_WLW_URL})\n"
+        )
 
     if is_weekday or force_office_check:
         office_status = check_office_route_disruption()

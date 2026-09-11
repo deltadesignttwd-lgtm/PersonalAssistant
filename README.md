@@ -11,9 +11,9 @@ route pings on Saturday mornings.
 - Current + next-24h-lowest Octopus Agile electricity price (region `_C`,
   London/Lewisham)
 - Lewisham weather (current temp, today's range, rain warning)
-- A link to London's WLW (women loving women) events on Eventbrite - not
-  scraped/checked programmatically (see note below), just a direct link to
-  open and check yourself
+- **Thursday and Friday only:** a link to London's WLW (women loving women)
+  events on Eventbrite - not scraped/checked programmatically (see note
+  below), just a direct link to open and check yourself
 - **Monday-Friday only:** Office Route Check - TfL status for the `dlr` and
   `elizabeth` lines (the actual commute: home -> Canary Wharf via DLR ->
   Liverpool Street via Elizabeth line, decoded from the Citymapper links
