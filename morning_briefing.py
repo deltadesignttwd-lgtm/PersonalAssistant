@@ -228,9 +228,29 @@ def check_office_route_disruption():
 # 不需瀏覽器。商品的 category 欄位直接標示 "Food" 或 "NonFood"，不需另外分類。
 _LIDL_GRID_DATA_RE = re.compile(r'data-grid-data="(\{&quot;.*?\})"')
 
+# 依據使用者過去 60 天 Lidl 購買紀錄整理出的偏好商品關鍵字（比對時不分大小寫）。
+# 涵蓋：魚鮮海鮮、蛋白質/雞蛋、新鮮蔬菜、堅果種子、乳製品、冷凍莓果、義大利麵及醬料、
+# 其餘常買品項（奇異果、通寧水、Doritos、湯品、洋芋片）。
+PREFERRED_ITEM_KEYWORDS = (
+    "walnut", "almond", "chia seed", "flaxseed", "flax seed",
+    "meatball", "beef steak", "beef frying steak",
+    "salmon", "mackerel", "seabass", "sea bass", "tuna", "mussel",
+    "milk", "egg", "cheese",
+    "berry", "berries", "blueberry", "blueberries",
+    "carrot", "spinach", "sweetcorn", "corn", "cucumber",
+    "sweet potato", "tomato", "pak choi", "kiwi",
+    "linguine", "pasta sauce", "pasta",
+    "chips", "soup", "tonic water", "doritos",
+)
+
+
+def _matches_preferred_items(title):
+    text = title.lower()
+    return any(kw in text for kw in PREFERRED_ITEM_KEYWORDS)
+
 
 def get_lidl_food_offers():
-    """抓取 Lidl Plus 現正優惠頁面，回傳 category 為 Food 的商品清單"""
+    """抓取 Lidl Plus 現正優惠頁面，回傳 category 為 Food 的商品清單（含 title/price/discount_text）"""
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -251,23 +271,29 @@ def get_lidl_food_offers():
 
         title = data.get("fullTitle") or data.get("title") or "Unknown item"
         lidl_plus_price = (data.get("lidlPlus") or [{}])[0].get("price", {})
-        price = lidl_plus_price.get("price")
-        discount_text = lidl_plus_price.get("discount", {}).get("discountText")
-
-        line = f"• {title}"
-        if price is not None:
-            line += f" – £{price}"
-        if discount_text:
-            line += f" ({discount_text})"
-        items.append(line)
+        items.append({
+            "title": title,
+            "price": lidl_plus_price.get("price"),
+            "discount_text": lidl_plus_price.get("discount", {}).get("discountText"),
+        })
 
     return items
 
 
+def _format_offer_line(item):
+    line = f"• {item['title']}"
+    if item["price"] is not None:
+        line += f" – £{item['price']}"
+    if item["discount_text"]:
+        line += f" ({item['discount_text']})"
+    return line
+
+
 def send_lidl_food_offers():
-    """Saturday 專屬：傳送 Lidl Plus 現正優惠中的 Food 類別商品清單（可能分多則訊息傳送）"""
+    """Saturday 專屬：傳送 Lidl Plus 現正優惠中，符合使用者偏好的 Food 類別商品清單
+    （可能分多則訊息傳送）"""
     try:
-        items = get_lidl_food_offers()
+        food_items = get_lidl_food_offers()
     except Exception as e:
         print(f"Lidl 優惠擷取失敗: {e}")
         send_telegram(
@@ -275,14 +301,21 @@ def send_lidl_food_offers():
         )
         return
 
-    if not items:
-        send_telegram(f"🛒 *Lidl Food Offers*\nNo food offers found. Check manually: {LIDL_OFFERS_URL}")
+    preferred_items = [it for it in food_items if _matches_preferred_items(it["title"])]
+
+    if not preferred_items:
+        send_telegram(
+            f"🛒 *Lidl Food Offers*\nNo offers matching your usual items this week. "
+            f"Check manually: {LIDL_OFFERS_URL}"
+        )
         return
 
+    lines = [_format_offer_line(it) for it in preferred_items]
+
     # Telegram 單則訊息上限 4096 字元，商品數量多時分批傳送
-    header = f"🛒 *Lidl Food Offers ({len(items)} items)*\n"
+    header = f"🛒 *Lidl Food Offers - Picked For You ({len(lines)} items)*\n"
     chunk = header
-    for line in items:
+    for line in lines:
         if len(chunk) + len(line) + 1 > 3500:
             send_telegram(chunk)
             chunk = ""

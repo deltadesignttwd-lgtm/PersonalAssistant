@@ -21,7 +21,9 @@ route pings on Saturday mornings.
 - **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
   closest station to Virgin Active Strand
 - **Saturday only:** Lidl Food Offers - the current "Food" category items from
-  Lidl's Lidl Plus offers page, scraped directly (see note below), sent as a
+  Lidl's Lidl Plus offers page, scraped directly (see note below), filtered
+  down to items matching the user's usual purchases (`PREFERRED_ITEM_KEYWORDS`
+  in `morning_briefing.py`, built from a 60-day purchase history), sent as a
   separate message after the main briefing
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
@@ -120,4 +122,7 @@ inputs for testing outside their normal day-of-week:
   `Food` or `NonFood`) is server-side rendered as HTML-entity-escaped JSON
   inside each product tile's `data-grid-data` attribute - no browser or API
   reverse-engineering needed, just `requests.get()` + regex + HTML-unescape +
-  `json.loads()`. `get_lidl_food_offers()` filters to `category == "Food"`.
+  `json.loads()`. `get_lidl_food_offers()` filters to `category == "Food"`;
+  `send_lidl_food_offers()` further filters to titles matching
+  `PREFERRED_ITEM_KEYWORDS` before sending. Update that keyword tuple by hand
+  if buying habits change - it isn't derived automatically from anywhere.
