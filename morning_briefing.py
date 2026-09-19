@@ -1,3 +1,5 @@
+import html
+import json
 import os
 import re
 import time
@@ -15,6 +17,8 @@ LAT = 51.4615
 LON = -0.0102
 
 EVENTBRITE_WLW_URL = "https://www.eventbrite.co.uk/d/united-kingdom--london/events--today/lesbian/?page=1"
+
+LIDL_OFFERS_URL = "https://www.lidl.co.uk/c/lidl-plus-offers-current/a10053222"
 
 # Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
 CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
@@ -219,6 +223,74 @@ def check_office_route_disruption():
         )
 
 
+# Lidl 商品格線頁面把每個商品的完整資料，以 HTML 實體編碼過的 JSON，塞進
+# data-grid-data 屬性（伺服器端渲染，非前端 API 拉取），因此可用純 requests 取得，
+# 不需瀏覽器。商品的 category 欄位直接標示 "Food" 或 "NonFood"，不需另外分類。
+_LIDL_GRID_DATA_RE = re.compile(r'data-grid-data="(\{&quot;.*?\})"')
+
+
+def get_lidl_food_offers():
+    """抓取 Lidl Plus 現正優惠頁面，回傳 category 為 Food 的商品清單"""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+    }
+    res = requests.get(LIDL_OFFERS_URL, headers=headers, timeout=20)
+    res.raise_for_status()
+
+    items = []
+    for raw in _LIDL_GRID_DATA_RE.findall(res.text):
+        try:
+            data = json.loads(html.unescape(raw))
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if data.get("category") != "Food":
+            continue
+
+        title = data.get("fullTitle") or data.get("title") or "Unknown item"
+        lidl_plus_price = (data.get("lidlPlus") or [{}])[0].get("price", {})
+        price = lidl_plus_price.get("price")
+        discount_text = lidl_plus_price.get("discount", {}).get("discountText")
+
+        line = f"• {title}"
+        if price is not None:
+            line += f" – £{price}"
+        if discount_text:
+            line += f" ({discount_text})"
+        items.append(line)
+
+    return items
+
+
+def send_lidl_food_offers():
+    """Saturday 專屬：傳送 Lidl Plus 現正優惠中的 Food 類別商品清單（可能分多則訊息傳送）"""
+    try:
+        items = get_lidl_food_offers()
+    except Exception as e:
+        print(f"Lidl 優惠擷取失敗: {e}")
+        send_telegram(
+            f"🛒 *Lidl Food Offers*\nCouldn't fetch offers this time. Check manually: {LIDL_OFFERS_URL}"
+        )
+        return
+
+    if not items:
+        send_telegram(f"🛒 *Lidl Food Offers*\nNo food offers found. Check manually: {LIDL_OFFERS_URL}")
+        return
+
+    # Telegram 單則訊息上限 4096 字元，商品數量多時分批傳送
+    header = f"🛒 *Lidl Food Offers ({len(items)} items)*\n"
+    chunk = header
+    for line in items:
+        if len(chunk) + len(line) + 1 > 3500:
+            send_telegram(chunk)
+            chunk = ""
+        chunk += line + "\n"
+    if chunk.strip():
+        send_telegram(chunk)
+
+
 def send_telegram(msg, max_attempts=3):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("TG_BOT_TOKEN / TG_CHAT_ID 未設定，請確認 repository secrets。")
@@ -244,7 +316,7 @@ def send_telegram(msg, max_attempts=3):
             time.sleep(3 * attempt)
 
 
-def send_full_briefing(now_local, force_route_check, force_office_check):
+def send_full_briefing(now_local, force_route_check, force_office_check, force_lidl_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
     is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
@@ -291,6 +363,9 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
     briefing += "\n祝你有美好的一天！💪"
     send_telegram(briefing)
 
+    if is_saturday or force_lidl_check:
+        send_lidl_food_offers()
+
 
 def send_route_only_update(now_local):
     """Saturday 10:30-11:15 高頻路線提醒，只回報路況，不含天氣/電價"""
@@ -308,11 +383,12 @@ def main():
     mode = os.environ.get("MODE", "full").strip().lower()
     force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
     force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"
+    force_lidl_check = os.environ.get("FORCE_LIDL_CHECK", "").lower() == "true"
 
     if mode == "route_only":
         send_route_only_update(now_local)
     else:
-        send_full_briefing(now_local, force_route_check, force_office_check)
+        send_full_briefing(now_local, force_route_check, force_office_check, force_lidl_check)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,10 @@ on:
         description: "Include the office route check even if today isn't a weekday (for testing)"
         type: boolean
         default: false
+      force_lidl_check:
+        description: "Include the Lidl food offers even if today isn't Saturday (for testing)"
+        type: boolean
+        default: false
 
 jobs:
   send-briefing:
@@ -39,4 +43,5 @@ jobs:
           MODE: full
           FORCE_ROUTE_CHECK: ${{ github.event.inputs.force_route_check }}
           FORCE_OFFICE_CHECK: ${{ github.event.inputs.force_office_check }}
+          FORCE_LIDL_CHECK: ${{ github.event.inputs.force_lidl_check }}
         run: python morning_briefing.py
