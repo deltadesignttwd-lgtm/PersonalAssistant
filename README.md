@@ -126,3 +126,9 @@ inputs for testing outside their normal day-of-week:
   `send_lidl_food_offers()` further filters to titles matching
   `PREFERRED_ITEM_KEYWORDS` before sending. Update that keyword tuple by hand
   if buying habits change - it isn't derived automatically from anywhere.
+- The current-offers page's numeric ID (e.g. `a10053222` in
+  `/c/lidl-plus-offers-current/a10053222`) rotates weekly, so it's never
+  hardcoded. `_resolve_current_lidl_offers_url()` first fetches the stable
+  `LIDL_OFFERS_BASE_URL` category landing page and extracts that week's
+  `/c/lidl-plus-offers-current/a{id}` link from it, then scrapes that
+  resolved URL.

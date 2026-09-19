@@ -18,7 +18,9 @@ LON = -0.0102
 
 EVENTBRITE_WLW_URL = "https://www.eventbrite.co.uk/d/united-kingdom--london/events--today/lesbian/?page=1"
 
-LIDL_OFFERS_URL = "https://www.lidl.co.uk/c/lidl-plus-offers-current/a10053222"
+# 目前優惠頁面（例如 a10053222）的編號每週會輪替，因此不直接寫死該網址，
+# 而是先讀取這個穩定不變的分類首頁，從中解析出「本週優惠」實際連結。
+LIDL_OFFERS_BASE_URL = "https://www.lidl.co.uk/c/lidl-plus-offers-current/"
 
 # Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
 CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
@@ -228,6 +230,29 @@ def check_office_route_disruption():
 # 不需瀏覽器。商品的 category 欄位直接標示 "Food" 或 "NonFood"，不需另外分類。
 _LIDL_GRID_DATA_RE = re.compile(r'data-grid-data="(\{&quot;.*?\})"')
 
+# 分類首頁上「本週優惠（In Store Now）」版塊的實際連結，格式為
+# /c/lidl-plus-offers-current/a{編號}，編號每週會變動
+_LIDL_CURRENT_OFFERS_LINK_RE = re.compile(r'href="(/c/lidl-plus-offers-current/a\d+)"')
+
+_LIDL_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def _resolve_current_lidl_offers_url():
+    """讀取穩定不變的分類首頁，解析出目前這週優惠頁面的實際網址，
+    避免該頁面編號（如 a10053222）每週輪替時程式失效"""
+    res = requests.get(LIDL_OFFERS_BASE_URL, headers=_LIDL_HEADERS, timeout=20)
+    res.raise_for_status()
+    match = _LIDL_CURRENT_OFFERS_LINK_RE.search(res.text)
+    if not match:
+        raise RuntimeError("在分類首頁找不到本週優惠頁面連結")
+    return "https://www.lidl.co.uk" + match.group(1)
+
+
 # 依據使用者過去 60 天 Lidl 購買紀錄整理出的偏好商品關鍵字（比對時不分大小寫）。
 # 涵蓋：魚鮮海鮮、蛋白質/雞蛋、新鮮蔬菜、堅果種子、乳製品、冷凍莓果、義大利麵及醬料、
 # 其餘常買品項（奇異果、通寧水、Doritos、湯品、洋芋片）。
@@ -251,13 +276,8 @@ def _matches_preferred_items(title):
 
 def get_lidl_food_offers():
     """抓取 Lidl Plus 現正優惠頁面，回傳 category 為 Food 的商品清單（含 title/price/discount_text）"""
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        ),
-    }
-    res = requests.get(LIDL_OFFERS_URL, headers=headers, timeout=20)
+    offers_url = _resolve_current_lidl_offers_url()
+    res = requests.get(offers_url, headers=_LIDL_HEADERS, timeout=20)
     res.raise_for_status()
 
     items = []
@@ -297,7 +317,7 @@ def send_lidl_food_offers():
     except Exception as e:
         print(f"Lidl 優惠擷取失敗: {e}")
         send_telegram(
-            f"🛒 *Lidl Food Offers*\nCouldn't fetch offers this time. Check manually: {LIDL_OFFERS_URL}"
+            f"🛒 *Lidl Food Offers*\nCouldn't fetch offers this time. Check manually: {LIDL_OFFERS_BASE_URL}"
         )
         return
 
@@ -306,7 +326,7 @@ def send_lidl_food_offers():
     if not preferred_items:
         send_telegram(
             f"🛒 *Lidl Food Offers*\nNo offers matching your usual items this week. "
-            f"Check manually: {LIDL_OFFERS_URL}"
+            f"Check manually: {LIDL_OFFERS_BASE_URL}"
         )
         return
 
