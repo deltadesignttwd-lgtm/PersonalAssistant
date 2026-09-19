@@ -8,8 +8,10 @@ route pings on Saturday mornings.
 
 **Daily, 07:00 BST/GMT** (`morning_briefing.py`, `MODE=full`):
 
-- Current + next-24h-lowest Octopus Agile electricity price (region `_C`,
-  London/Lewisham)
+- Current Octopus Agile electricity price, plus the cheapest 3-hour window in
+  the next 24h - the cheapest 1-hour period (2 consecutive 30-min slots by
+  average price) plus the 2 hours immediately before it, so you know how
+  early to start using appliances (region `_C`, London/Lewisham)
 - Lewisham weather (current temp, today's range, rain warning)
 - **Thursday and Friday only:** a link to London's WLW (women loving women)
   events on Eventbrite - not scraped/checked programmatically (see note

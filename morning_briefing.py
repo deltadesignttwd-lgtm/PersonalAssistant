@@ -59,17 +59,37 @@ def get_octopus_agile_rates():
         )
         current_rate = f"{round(current_entry['value_inc_vat'], 2)} p/kWh" if current_entry else "N/A"
 
-        # 找出未來 24 小時內的最低電價
+        # 找出未來 24 小時內「最低電價的 3 小時區段」：先找出價格最低的 1 小時
+        # (2 個連續半小時 slot 平均價格最低的一段)，再往前推 2 小時形成 3 小時
+        # 區段，讓使用者知道提前多久開始用電最划算
         window_end = now + timedelta(hours=24)
-        upcoming = [r for r in data if now <= _parse_iso(r['valid_from']) < window_end]
+        upcoming = sorted(
+            (r for r in data if now <= _parse_iso(r['valid_from']) < window_end),
+            key=lambda r: _parse_iso(r['valid_from'])
+        )
         if not upcoming:
-            upcoming = data
+            upcoming = sorted(data, key=lambda r: _parse_iso(r['valid_from']))
 
-        lowest_entry = min(upcoming, key=lambda x: x['value_inc_vat'])
-        lowest_val = round(lowest_entry['value_inc_vat'], 2)
-        lowest_time = _parse_iso(lowest_entry['valid_from']).astimezone(LOCAL_TZ).strftime("%H:%M")
+        best_avg = None
+        best_hour_start = None
+        for i in range(len(upcoming) - 1):
+            slot_a, slot_b = upcoming[i], upcoming[i + 1]
+            # 確保兩個 slot 首尾相接，避免資料缺漏時誤判成連續的 1 小時
+            if _parse_iso(slot_a['valid_to']) != _parse_iso(slot_b['valid_from']):
+                continue
+            avg = (slot_a['value_inc_vat'] + slot_b['value_inc_vat']) / 2
+            if best_avg is None or avg < best_avg:
+                best_avg = avg
+                best_hour_start = _parse_iso(slot_a['valid_from'])
 
-        return current_rate, f"{lowest_val} p/kWh at {lowest_time}"
+        if best_hour_start is not None:
+            window_start_local = (best_hour_start - timedelta(hours=2)).astimezone(LOCAL_TZ).strftime("%H:%M")
+            window_end_local = (best_hour_start + timedelta(hours=1)).astimezone(LOCAL_TZ).strftime("%H:%M")
+            lowest_window = f"{window_start_local} - {window_end_local} (cheapest hour avg {round(best_avg, 2)} p/kWh)"
+        else:
+            lowest_window = "N/A"
+
+        return current_rate, lowest_window
     except Exception as e:
         print(f"Octopus API 錯誤: {e}")
         return "擷取失敗", "擷取失敗"
@@ -382,7 +402,7 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_l
         f"☀️ *晨間晨報 ({today})*\n\n"
         f"⚡ *Octopus Agile 即時電價*\n"
         f"• 當前電價: `{curr_price}`\n"
-        f"• 未來 24h 最低電價: `{lowest_price}`\n\n"
+        f"• 未來 24h 最低電價 3 小時區段: `{lowest_price}`\n\n"
         f"🌤️ *Lewisham 天氣預報*\n"
         f"• 當前氣溫: `{curr_temp}`\n"
         f"• 今日氣溫區間: `{temp_range}`\n"
