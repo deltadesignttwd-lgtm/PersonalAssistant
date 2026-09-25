@@ -18,6 +18,12 @@ LON = -0.0102
 
 EVENTBRITE_WLW_URL = "https://www.eventbrite.co.uk/d/united-kingdom--london/events--today/lesbian/?page=1"
 
+# Hang Seng Bank 的 TT 匯率頁面本身沒有把數字寫進靜態 HTML；頁面的
+# clientlib-rates/ttTable.js 揭露了背後實際呼叫的公開 JSON API，直接呼叫即可，
+# 不需要瀏覽器渲染。
+HANGSENG_TT_RATES_PAGE_URL = "https://www.hangseng.com/en-hk/rates/foreign-currency-tt-exchange-rates/"
+HANGSENG_TT_RATES_API_URL = "https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi-prod-proxy/v1/fxtt-exchange-rates"
+
 # 目前優惠頁面（例如 a10053222）的編號每週會輪替，因此不直接寫死該網址，
 # 而是先讀取這個穩定不變的分類首頁，從中解析出「本週優惠」實際連結。
 LIDL_OFFERS_BASE_URL = "https://www.lidl.co.uk/c/lidl-plus-offers-current/"
@@ -134,6 +140,30 @@ def get_weather_forecast(max_attempts=3):
 
     print(f"Weather API 最終失敗: {last_error}")
     return "N/A", "N/A", "擷取失敗"
+
+
+def get_gbp_hkd_tt_rate():
+    """取得 Hang Seng Bank 官方 GBP/HKD TT（電匯）匯率，失敗時回傳 None"""
+    try:
+        res = requests.get(HANGSENG_TT_RATES_API_URL, timeout=15)
+        res.raise_for_status()
+        data = res.json()
+        rates = data.get("fxttExchangeRates", [])
+        gbp = next((r for r in rates if r.get("ccyDisplayCode") == "GBP"), None)
+        if gbp is None:
+            raise RuntimeError("API 回應中找不到 GBP 匯率")
+
+        last_update_raw = data.get("lastUpdateTime")
+        last_update = _parse_iso(last_update_raw).strftime("%Y-%m-%d %H:%M HKT") if last_update_raw else "N/A"
+
+        return {
+            "buy": gbp.get("ttBuyRate"),
+            "sell": gbp.get("ttSellRate"),
+            "last_update": last_update,
+        }
+    except Exception as e:
+        print(f"Hang Seng GBP/HKD 匯率擷取失敗: {e}")
+        return None
 
 
 def _get_tfl_line_disruptions(line_ids):
@@ -409,6 +439,7 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_l
 
     curr_price, lowest_price = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
+    gbp_hkd_rate = get_gbp_hkd_tt_rate()
 
     briefing = (
         f"☀️ *晨間晨報 ({today})*\n\n"
@@ -420,6 +451,19 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_l
         f"• 今日氣溫區間: `{temp_range}`\n"
         f"• 降雨提醒: {rain_msg}\n"
     )
+
+    if gbp_hkd_rate is not None:
+        briefing += (
+            f"\n💷 *GBP/HKD TT Rate (Hang Seng)*\n"
+            f"• Bank Buy: `{gbp_hkd_rate['buy']}`\n"
+            f"• Bank Sell: `{gbp_hkd_rate['sell']}`\n"
+            f"🕐 Last updated: {gbp_hkd_rate['last_update']}\n"
+        )
+    else:
+        briefing += (
+            f"\n💷 *GBP/HKD TT Rate (Hang Seng)*\n"
+            f"Couldn't fetch the rate this time. Check manually: [Hang Seng TT Rates]({HANGSENG_TT_RATES_PAGE_URL})\n"
+        )
 
     if is_thu_or_fri:
         briefing += (

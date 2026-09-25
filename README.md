@@ -13,6 +13,8 @@ route pings on Saturday mornings.
   average price) plus the 2 hours immediately before it, so you know how
   early to start using appliances (region `_C`, London/Lewisham)
 - Lewisham weather (current temp, today's range, rain warning)
+- GBP/HKD TT (telegraphic transfer) exchange rate from Hang Seng Bank -
+  Bank Buy/Sell rates plus the bank's last-updated timestamp (see note below)
 - **Thursday and Friday only:** a link to London's WLW (women loving women)
   events on Eventbrite - not scraped/checked programmatically (see note
   below), just a direct link to open and check yourself
@@ -134,3 +136,10 @@ inputs for testing outside their normal day-of-week:
   `LIDL_OFFERS_BASE_URL` category landing page and extracts that week's
   `/c/lidl-plus-offers-current/a{id}` link from it, then scrapes that
   resolved URL.
+- The Hang Seng GBP/HKD TT rate is fetched from a genuine public JSON API
+  (`HANGSENG_TT_RATES_API_URL`), not scraped from HTML. The bank's own TT
+  rates page doesn't render the numbers into static HTML - they're loaded
+  client-side by `clientlib-rates/ttTable.js`, which calls
+  `https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi-prod-proxy/v1/fxtt-exchange-rates`.
+  That endpoint returns plain JSON (all currencies, no auth needed) and is
+  called directly by `get_gbp_hkd_tt_rate()`.
