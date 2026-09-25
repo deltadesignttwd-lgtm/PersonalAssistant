@@ -95,33 +95,45 @@ def get_octopus_agile_rates():
         return "擷取失敗", "擷取失敗"
 
 
-def get_weather_forecast():
-    """透過 Open-Meteo API 取得 Lewisham 天氣預報"""
+def get_weather_forecast(max_attempts=3):
+    """透過 Open-Meteo API 取得 Lewisham 天氣預報，暫時性錯誤（如 503）會重試"""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m&hourly=temperature_2m,precipitation_probability&forecast_days=1&timezone=Europe%2FLondon"
-    try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-        data = res.json()
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
 
-        curr_temp = round(data['current']['temperature_2m'])
-        hourly_temps = data['hourly']['temperature_2m']
-        hourly_rain = data['hourly']['precipitation_probability']
+            curr_temp = round(data['current']['temperature_2m'])
+            hourly_temps = data['hourly']['temperature_2m']
+            hourly_rain = data['hourly']['precipitation_probability']
 
-        min_temp = round(min(hourly_temps))
-        max_temp = round(max(hourly_temps))
-        max_rain_prob = max(hourly_rain)
+            min_temp = round(min(hourly_temps))
+            max_temp = round(max(hourly_temps))
+            max_rain_prob = max(hourly_rain)
 
-        if max_rain_prob >= 50:
-            rain_summary = f"⚠️ 今天降雨機率高（最高 {max_rain_prob}%）！記得帶傘 🌧️"
-        elif max_rain_prob >= 20:
-            rain_summary = f"🌦️ 可能有局部短暫雨（最高 {max_rain_prob}% 機率）。"
-        else:
-            rain_summary = "☀️ 今天預計無明顯降雨。"
+            if max_rain_prob >= 50:
+                rain_summary = f"⚠️ 今天降雨機率高（最高 {max_rain_prob}%）！記得帶傘 🌧️"
+            elif max_rain_prob >= 20:
+                rain_summary = f"🌦️ 可能有局部短暫雨（最高 {max_rain_prob}% 機率）。"
+            else:
+                rain_summary = "☀️ 今天預計無明顯降雨。"
 
-        return f"{curr_temp}°C", f"{min_temp}°C ~ {max_temp}°C", rain_summary
-    except Exception as e:
-        print(f"Weather API 錯誤: {e}")
-        return "N/A", "N/A", "擷取失敗"
+            return f"{curr_temp}°C", f"{min_temp}°C ~ {max_temp}°C", rain_summary
+        except requests.exceptions.RequestException as e:
+            # 網路/HTTP 錯誤（例如今天實際發生的 503）視為暫時性，重試
+            last_error = e
+            print(f"Weather API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+        except Exception as e:
+            # 非網路性錯誤（例如回應格式異常）不重試，直接視為失敗
+            last_error = e
+            break
+
+    print(f"Weather API 最終失敗: {last_error}")
+    return "N/A", "N/A", "擷取失敗"
 
 
 def _get_tfl_line_disruptions(line_ids):
