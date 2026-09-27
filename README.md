@@ -13,8 +13,12 @@ route pings on Saturday mornings.
   average price) plus the 2 hours immediately before it, so you know how
   early to start using appliances (region `_C`, London/Lewisham)
 - Lewisham weather (current temp, today's range, rain warning)
-- GBP/HKD TT (telegraphic transfer) exchange rate from Hang Seng Bank -
-  Bank Buy/Sell rates plus the bank's last-updated timestamp (see note below)
+- **Only when Bank Buy >= 10.5:** GBP/HKD TT (telegraphic transfer) exchange
+  rate from Hang Seng Bank - Bank Buy/Sell rates plus the bank's
+  last-updated timestamp (see note below). Below that threshold, this
+  section is skipped entirely (a genuine fetch failure still shows a
+  "couldn't fetch" fallback, since that's a different situation from the
+  rate simply being below the threshold)
 - **Thursday and Friday only:** a link to London's WLW (women loving women)
   events on Eventbrite - not scraped/checked programmatically (see note
   below), just a direct link to open and check yourself
@@ -136,6 +140,13 @@ inputs for testing outside their normal day-of-week:
   `https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi-prod-proxy/v1/fxtt-exchange-rates`.
   That endpoint returns plain JSON (all currencies, no auth needed) and is
   called directly by `get_gbp_hkd_tt_rate()`.
+- The GBP/HKD section only shows up in the daily briefing when the fetched
+  Bank Buy rate is `>= GBP_HKD_BUY_RATE_THRESHOLD` (currently `10.5`) - this
+  is a user-set business threshold, not a technical concern. A genuine fetch
+  failure (`get_gbp_hkd_tt_rate()` returns `None`) still shows the existing
+  "couldn't fetch" fallback with a manual-check link; only a successfully
+  fetched rate below the threshold causes the section to be skipped
+  entirely, with no message at all.
 - `check_route_disruption()` also checks whether Lewisham station itself is
   closed (rail replacement buses running instead of trains) by scraping
   nationalrail.co.uk's live departures board for Lewisham

@@ -23,6 +23,9 @@ EVENTBRITE_WLW_URL = "https://www.eventbrite.co.uk/d/united-kingdom--london/even
 HANGSENG_TT_RATES_PAGE_URL = "https://www.hangseng.com/en-hk/rates/foreign-currency-tt-exchange-rates/"
 HANGSENG_TT_RATES_API_URL = "https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi-prod-proxy/v1/fxtt-exchange-rates"
 
+# 只有在 Bank Buy 匯率達到這個門檻時，才在每日晨報中顯示這個區塊
+GBP_HKD_BUY_RATE_THRESHOLD = 10.5
+
 # Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
 CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
 
@@ -479,12 +482,18 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
     )
 
     if gbp_hkd_rate is not None:
-        briefing += (
-            f"\n💷 *GBP/HKD TT Rate (Hang Seng)*\n"
-            f"• Bank Buy: `{gbp_hkd_rate['buy']}`\n"
-            f"• Bank Sell: `{gbp_hkd_rate['sell']}`\n"
-            f"🕐 Last updated: {gbp_hkd_rate['last_update']}\n"
-        )
+        try:
+            meets_buy_threshold = float(gbp_hkd_rate['buy']) >= GBP_HKD_BUY_RATE_THRESHOLD
+        except (TypeError, ValueError):
+            meets_buy_threshold = False
+
+        if meets_buy_threshold:
+            briefing += (
+                f"\n💷 *GBP/HKD TT Rate (Hang Seng)*\n"
+                f"• Bank Buy: `{gbp_hkd_rate['buy']}`\n"
+                f"• Bank Sell: `{gbp_hkd_rate['sell']}`\n"
+                f"🕐 Last updated: {gbp_hkd_rate['last_update']}\n"
+            )
     else:
         briefing += (
             f"\n💷 *GBP/HKD TT Rate (Hang Seng)*\n"
