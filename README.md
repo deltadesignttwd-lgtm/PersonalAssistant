@@ -24,11 +24,6 @@ route pings on Saturday mornings.
   originally supplied)
 - **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
   closest station to Virgin Active Strand
-- **Saturday only:** Lidl Food Offers - the current "Food" category items from
-  Lidl's Lidl Plus offers page, scraped directly (see note below), filtered
-  down to items matching the user's usual purchases (`PREFERRED_ITEM_KEYWORDS`
-  in `morning_briefing.py`, built from a 60-day purchase history), sent as a
-  separate message after the main briefing
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -94,14 +89,13 @@ you've also enabled cron-job.org's failure-notification emails.
 ## Manual testing
 
 Both workflows accept manual `workflow_dispatch` runs from the Actions tab
-(or via the API). `morning-briefing.yml` additionally takes three boolean
+(or via the API). `morning-briefing.yml` additionally takes two boolean
 inputs for testing outside their normal day-of-week:
 
 - `force_route_check` - include the Saturday gym route check even on a
   non-Saturday
 - `force_office_check` - include the office route check even on a
   non-weekday
-- `force_lidl_check` - include the Lidl food offers even on a non-Saturday
 
 ## Notes on the route checks
 
@@ -120,22 +114,6 @@ inputs for testing outside their normal day-of-week:
   2019 and only supports querying events you organize yourself. There's no
   lightweight way to programmatically check which events are on today, so
   the message just links to the search page instead.
-- The Lidl food offers, unlike Odeon/Eventbrite, are genuinely scrapeable:
-  `lidl.co.uk` returns a plain HTTP 200 with no bot-challenge, and the page's
-  full offer data (title, price, discount text, and a `category` field of
-  `Food` or `NonFood`) is server-side rendered as HTML-entity-escaped JSON
-  inside each product tile's `data-grid-data` attribute - no browser or API
-  reverse-engineering needed, just `requests.get()` + regex + HTML-unescape +
-  `json.loads()`. `get_lidl_food_offers()` filters to `category == "Food"`;
-  `send_lidl_food_offers()` further filters to titles matching
-  `PREFERRED_ITEM_KEYWORDS` before sending. Update that keyword tuple by hand
-  if buying habits change - it isn't derived automatically from anywhere.
-- The current-offers page's numeric ID (e.g. `a10053222` in
-  `/c/lidl-plus-offers-current/a10053222`) rotates weekly, so it's never
-  hardcoded. `_resolve_current_lidl_offers_url()` first fetches the stable
-  `LIDL_OFFERS_BASE_URL` category landing page and extracts that week's
-  `/c/lidl-plus-offers-current/a{id}` link from it, then scrapes that
-  resolved URL.
 - The Hang Seng GBP/HKD TT rate is fetched from a genuine public JSON API
   (`HANGSENG_TT_RATES_API_URL`), not scraped from HTML. The bank's own TT
   rates page doesn't render the numbers into static HTML - they're loaded
