@@ -339,10 +339,8 @@ def _check_route_disruption_impl():
 
     if is_closed:
         details = "; ".join(notice_texts) if notice_texts else f"{replacement_services} rail replacement bus service(s) found on the departure board"
-        message = (
-            f"🔴 Lewisham station appears to be closed - rail replacement buses in operation.\n"
-            f"{details}\n"
-        )
+        print(f"Lewisham 車站關閉詳情: {details}")
+        message = "🔴 Lewisham station appears to be closed - rail replacement buses in operation.\n"
         try:
             route_summary = get_hither_green_to_strand_route()
             message += f"\n🚏 Alternative route from Hither Green:\n{route_summary}\n"
