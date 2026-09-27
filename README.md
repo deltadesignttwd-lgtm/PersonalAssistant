@@ -23,7 +23,8 @@ route pings on Saturday mornings.
   Liverpool Street via Elizabeth line, decoded from the Citymapper links
   originally supplied)
 - **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
-  closest station to Virgin Active Strand
+  closest station to Virgin Active Strand - also checks whether Lewisham
+  station itself is closed for rail replacement buses (see note below)
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -121,3 +122,19 @@ inputs for testing outside their normal day-of-week:
   `https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi-prod-proxy/v1/fxtt-exchange-rates`.
   That endpoint returns plain JSON (all currencies, no auth needed) and is
   called directly by `get_gbp_hkd_tt_rate()`.
+- `check_route_disruption()` also checks whether Lewisham station itself is
+  closed (rail replacement buses running instead of trains) by scraping
+  nationalrail.co.uk's live departures board for Lewisham
+  (`NATIONALRAIL_LEWISHAM_URL`). The page renders fine with a plain
+  `requests.get()` and embeds its live data as JSON in a
+  `<script id="__NEXT_DATA__">` tag - `check_lewisham_replacement_buses()`
+  extracts that JSON and looks for a "replacement" signal in two places: the
+  station's live `nrccMessages` announcements, and any scheduled departure
+  in `services` whose `serviceType.category` is `BusReplacement`. It
+  deliberately does NOT do a blind text search across the whole page,
+  because the page's JS bundle also contains generic UI label strings (e.g.
+  `journeySummaryMicrocopy__replacementBusService`) that are always present
+  regardless of whether there's an actual disruption right now - matching
+  those would make the check permanently report "closed". When either
+  signal is found, `check_route_disruption()` reports Lewisham as closed
+  ahead of (and instead of) the usual TfL Southeastern line status check.

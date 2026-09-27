@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import time
@@ -191,8 +192,72 @@ def _extract_disruption_station_slug(reason_text):
     return match.group(1) if match else None
 
 
+# nationalrail.co.uk 的即時發車看板頁面把資料以 Next.js SSR JSON 塞進
+# <script id="__NEXT_DATA__">，可用純 requests 取得。頁面的 JS bundle 裡也含有一堆
+# 「即使目前沒有任何中斷」也永遠存在的 UI 靜態文字（例如
+# journeySummaryMicrocopy__replacementBusService），因此只檢查真正即時的
+# nrccMessages（車站即時公告）與 services（實際班次清單）裡的 replacement bus 訊號，
+# 避免被那些固定不變的 UI 文字誤判成永遠都在中斷。
+NATIONALRAIL_LEWISHAM_URL = "https://www.nationalrail.co.uk/live-trains/departures/lewisham/"
+_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(\{.*?\})</script>')
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+_NATIONALRAIL_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def check_lewisham_replacement_buses():
+    """檢查 Lewisham 車站即時發車看板，看是否有 rail replacement bus 的即時訊號
+    （車站公告或實際班次列表），代表本站目前形同關閉"""
+    res = requests.get(NATIONALRAIL_LEWISHAM_URL, headers=_NATIONALRAIL_HEADERS, timeout=20)
+    res.raise_for_status()
+
+    match = _NEXT_DATA_RE.search(res.text)
+    if not match:
+        raise RuntimeError("在頁面中找不到 __NEXT_DATA__")
+    data = json.loads(match.group(1))
+
+    queries = data.get("props", {}).get("pageProps", {}).get("liveTrainsState", {}).get("queries", [])
+    pages = queries[0].get("state", {}).get("data", {}).get("pages", []) if queries else []
+    page = pages[0] if pages else {}
+
+    nrcc_messages = page.get("nrccMessages", [])
+    services = page.get("services", [])
+
+    notice_texts = []
+    for m in nrcc_messages:
+        text = _HTML_TAG_RE.sub("", m.get("message", ""))
+        if "replacement" in text.lower():
+            notice_texts.append(text)
+
+    replacement_services = sum(
+        1 for s in services if s.get("serviceType", {}).get("category") == "BusReplacement"
+    )
+
+    is_closed = bool(notice_texts) or replacement_services > 0
+    return is_closed, notice_texts, replacement_services
+
+
 def check_route_disruption():
     """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
+    try:
+        is_closed, notice_texts, replacement_services = check_lewisham_replacement_buses()
+    except Exception as e:
+        print(f"Lewisham 車站關閉檢查失敗: {e}")
+        is_closed, notice_texts, replacement_services = False, [], 0
+
+    if is_closed:
+        details = "; ".join(notice_texts) if notice_texts else f"{replacement_services} rail replacement bus service(s) found on the departure board"
+        return (
+            f"🔴 Lewisham station appears to be closed - rail replacement buses in operation.\n"
+            f"{details}\n"
+            f"🔗 [Check live departures]({NATIONALRAIL_LEWISHAM_URL})"
+        )
+
     try:
         # Lewisham 有 Southeastern 直達車到 Charing Cross（步行至 Strand 約 5 分鐘），
         # 因此只檢查與此路線相關的服務。注意：'charing-cross' 不是有效的 TfL line id
