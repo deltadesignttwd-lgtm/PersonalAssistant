@@ -18,10 +18,11 @@ route pings on Saturday mornings.
 - **Thursday and Friday only:** a link to London's WLW (women loving women)
   events on Eventbrite - not scraped/checked programmatically (see note
   below), just a direct link to open and check yourself
-- **Monday-Friday only:** Office Route Check - TfL status for the `dlr` and
-  `elizabeth` lines (the actual commute: home -> Canary Wharf via DLR ->
-  Liverpool Street via Elizabeth line, decoded from the Citymapper links
-  originally supplied)
+- **Monday-Friday only:** Office Route Check - reports on the commute route
+  home -> Bank via DLR -> Old Street via Northern line (decoded from the
+  Citymapper link originally supplied), by querying TfL status for the
+  `dlr`, `elizabeth`, and `northern` lines - the `elizabeth` line query is
+  kept even though the current route doesn't use it (see note below)
 - **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
   closest station to Virgin Active Strand - also checks whether Lewisham
   station itself is closed for rail replacement buses, and if so reports a
@@ -106,6 +107,16 @@ inputs for testing outside their normal day-of-week:
   (`https://api.tfl.gov.uk/Line/{ids}/Status`) rather than by "mode," since
   mode-based queries for some lines (e.g. `elizabeth-line` as a mode name)
   have been unreliable on TfL's API historically.
+- The office commute used to have two route options: home -> Canary Wharf
+  (DLR) -> Liverpool Street (Elizabeth line), or home -> Bank (DLR) -> Old
+  Street (Northern line). The user settled on the Bank/Old Street route as
+  the only one now shown (`CITYMAPPER_OFFICE_URL`), so the Canary
+  Wharf/Liverpool Street link and its two Citymapper leg URLs were removed.
+  `check_office_route_disruption()` still queries all three TfL lines
+  (`dlr`, `elizabeth`, `northern`) and keeps the full
+  `_IRRELEVANT_OFFICE_ROUTE_KEYWORDS` filtering list unchanged - the
+  `elizabeth` line query is now unused by the displayed route but was left
+  in place on request rather than trimmed.
 - Most Citymapper links in `morning_briefing.py` are decorative/fallback links
   for the user to open manually if the TfL check itself fails - they are not
   queried programmatically (Citymapper has no public routing-*status* API).

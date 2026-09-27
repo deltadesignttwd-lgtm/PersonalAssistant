@@ -26,14 +26,11 @@ HANGSENG_TT_RATES_API_URL = "https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi
 # Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
 CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
 
-# Citymapper 路線資訊 (平日通勤: Home 41D Eastdown Park → Canary Wharf [DLR] → Liverpool Street [Elizabeth line])
-# 兩段連結內容已解碼確認：leg1 是 home -> Canary Wharf (DLR)，leg2 是 Canary Wharf -> Liverpool Street (Elizabeth line)
-CITYMAPPER_OFFICE_LEG1_URL = "https://citymapper.com/trip/signature?signature=eJx9U9uO2jAQ%2FZXIryXL%2BBZiXgtSq6LtqhfxsFpZ3thACtjUMWVXiH9fO2RpoFLfMnNm5pw5Ex9RpTwaZ4JiOsiQ3nsVamdjhlBWxIyxOgZHVDnndRM%2FEcd3HApM8SCHO8AjVjIUC63amgR%2FVFb512y%2BUn6BThH45WVttXmJIMRwY5ZpzOMR6boJylapC2MB1%2FSCjxJ71TGygpUdIRklutrK2N0VIxgKSNmt062Ig9qsU9xc%2Bvmo4G0%2FMBAJCk6alzokfGYOdbNSWzmlQHmZVB%2F7WjCUcLGiW7DdbzL7lkatjNIH9RpBCtBTEbyyTaSIKe%2F2wci6dfARpb6nJC8of6Wg1RzcTlZub0NrzHvmvfdho8LC%2Ba28qO5UXIBrgXIi9T16Ou%2F013Eiipt7g%2BgbHk9M2NlwATTNX3i3vVh2wzHlRJB%2Fz0KG9P9n4cCpaFkIlMXNWXoc05mcmyZME3JKzu18XRm5M90yJNnuzbLj3a%2FzjbM6Bp31tV1Kb37v44xoZCrBvBQAUOYMzCJn5lnnpSog18ChVAZXhX5GvRMdkdLam6Z9ArN2%2BCD7%2BSWVXD2N9KMV55WAlgz3nwbDk2yqmqDdwWYPyq%2Fb9xHqM0qAFHkURMgPLMYcxkA%2FAB4DDO%2B%2Fzj9%2F%2F5Qm%2FTG%2BOe%2FIT28FUw8L"
-CITYMAPPER_OFFICE_LEG2_URL = "https://citymapper.com/trip/signature?signature=eJyFUstu2zAQ%2FBWD10YJHyIp%2BVoIaAEjLZACPgQBQUu0zUYmXYpqkhr%2B93IlO36kQG%2FcneXO7OzuUK0Dmk64lORmgpo%2B6Gi9SxlCc5YyxjUp2KHa%2B9B06Yk4ueVEypzeZPgWF0QIilKh0xsD8Mz%2BNmHrfTt5iMGYiPYJ%2FBmUdY15TQU4ha1ZQavHHWpsF7Wr4WfOrxSwYhBQH0kxl%2BXASQQQLoPfKPNqI%2BCftdPhbb7WYakqTgWGCutU6n7ohvAdoRzSG98MSl90%2Bwxxd2Jg7MAgOQEo%2Bn8xVDNV6S5WgKTpdueic4rfXTt5MVpRzaDn2ujmRb9BLeNncmLQrksdUyr4PhplB78fUdXaP3ph4npmnUFPoDjq8FHUMEv0W1X73gHMjoljp%2B%2BtjksfNupymOYevr6DV6oVVMzR0zjpaV80Ly%2F3RUt%2BsS8iiRhvhMr%2FGH9ZuocZt8HWRm3NSMYI2BrM6rDM%2FjlrvWtScLDLupUK5ldvupjGhZKcFU0tMc%2BEzmWWF4xlxWJRZ0RobAqCZW0EOjPz%2BsYxE2w8hpKfH%2Fjo3WQwbzjuaEeAYioyXGSU%2FiDlNBdTIj5hMsX47v7b%2FOvDF2iSnO3GEfj%2BL2T%2BAN8%3D"
-
-# Citymapper 路線資訊 (平日通勤替代路線: Home → Bank [DLR] → Old Street [Northern line]
-# → Frank Reynolds Architects, Shepherdess Walk)。解碼確認為完整替代路線（非前兩段的延伸）。
-CITYMAPPER_OFFICE_ALT_URL = "https://citymapper.com/trip/signature?signature=eJyNlNtu4jAQhl8l8u2S4kMSHO52VVZdLaKr0oqLqorceIAswWYds22FePfaCaQEtIc7PDP%2B558PT3YoFwYNA0JTznsBklsjbKGVCzFOIhcBJd1hh4SUBqrK%2FUbTJWyWYKQ7BjNRrnrBWCupVS94%2BI7clVxrI%2BvKmFzFTpkNeiG%2BwinFnPsCJdbg01%2BNUKvgDt6ULmUVfDb5srCQ2wrtXdVPkxVKwqurHLhjCQuv%2BbhDsqisULmXIITGXdspo951fmgfJREndXdCB753oTJ3%2B1CMcD%2FFPrrWsnb04sbx56q9Hw%2FS%2BjqOSOQzVmfwWlifHsNLUS3FOhsxzGLuTe9OrZCE45Yg%2BuJm9QJLEPJFvLlQxPBJa%2BtgVE7YhYzeWsiKmuEjuh7foSfvyQrT6VsbtXqT5XqrbN3wGDne%2FVEKO9dmnbVevZqrahPeVnad3aOnxv4HW9wF28xy5BIT5kB7MJyn9BIs6fO%2Fgz0TOGdHoxN0t6WcWgNgu%2Fxowv6H30Qb656r6kI8%2Fh0dgOyP%2FGpMk0xOOvBaY3VqdskwYWfPM8G8g9Fvx2E5SOK150av2xf2oT9il4xpn%2FwLMk0axIOUob2ff2OKHLINNPYY8ZQNLA6K21VY1qt8pFioRWbg1xYq65j4koQM8ucc0%2FA5wjKMaCLCFCQJY8ZBcgBM8BydgN51Pwd%2Bn8hhoxjn8ennYDoiLIhvHurtt0UTpJgmIeYhTe4pHbJ4SMgnTIYY9ye3s2%2FTGy%2FwG0zVTBDv3wGqG18e"
+# Citymapper 路線資訊 (平日通勤: Home → Bank [DLR] → Old Street [Northern line]
+# → Frank Reynolds Architects, Shepherdess Walk)。解碼確認為完整路線。
+# 原本還有另一條經 Canary Wharf [DLR] → Liverpool Street [Elizabeth line] 的路線，
+# 使用者已決定改用這條經 Bank/Old Street 的路線作為唯一常用路線，故移除前者。
+CITYMAPPER_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlNtu4jAQhl8l8u2S4kMSHO52VVZdLaKr0oqLqorceIAswWYds22FePfaCaQEtIc7PDP%2B558PT3YoFwYNA0JTznsBklsjbKGVCzFOIhcBJd1hh4SUBqrK%2FUbTJWyWYKQ7BjNRrnrBWCupVS94%2BI7clVxrI%2BvKmFzFTpkNeiG%2BwinFnPsCJdbg01%2BNUKvgDt6ULmUVfDb5srCQ2wrtXdVPkxVKwqurHLhjCQuv%2BbhDsqisULmXIITGXdspo951fmgfJREndXdCB753oTJ3%2B1CMcD%2FFPrrWsnb04sbx56q9Hw%2FS%2BjqOSOQzVmfwWlifHsNLUS3FOhsxzGLuTe9OrZCE45Yg%2BuJm9QJLEPJFvLlQxPBJa%2BtgVE7YhYzeWsiKmuEjuh7foSfvyQrT6VsbtXqT5XqrbN3wGDne%2FVEKO9dmnbVevZqrahPeVnad3aOnxv4HW9wF28xy5BIT5kB7MJyn9BIs6fO%2Fgz0TOGdHoxN0t6WcWgNgu%2Fxowv6H30Qb656r6kI8%2Fh0dgOyP%2FGpMk0xOOvBaY3VqdskwYWfPM8G8g9Fvx2E5SOK150av2xf2oT9il4xpn%2FwLMk0axIOUob2ff2OKHLINNPYY8ZQNLA6K21VY1qt8pFioRWbg1xYq65j4koQM8ucc0%2FA5wjKMaCLCFCQJY8ZBcgBM8BydgN51Pwd%2Bn8hhoxjn8ennYDoiLIhvHurtt0UTpJgmIeYhTe4pHbJ4SMgnTIYY9ye3s2%2FTGy%2FwG0zVTBDv3wGqG18e"
 
 
 def _parse_iso(ts):
@@ -410,12 +407,10 @@ def _mentions_irrelevant_office_location(reason_text):
 
 
 def check_office_route_disruption():
-    """檢查平日通勤路線（Lewisham → Canary Wharf [DLR] → Liverpool Street [Elizabeth line]，
-    或替代路線 Lewisham → Bank [DLR] → Old Street [Northern line]）的即時路況"""
+    """檢查平日通勤路線（Lewisham → Bank [DLR] → Old Street [Northern line]）的即時路況"""
     try:
-        # 路線由使用者提供的 Citymapper 連結解碼確認：
-        # leg1 = home -> Canary Wharf (DLR)，leg2 = Canary Wharf -> Liverpool Street (Elizabeth line)
-        # 替代路線 = home -> Bank (DLR) -> Old Street (Northern line, 經 Moorgate)
+        # 路線由使用者提供的 Citymapper 連結解碼確認：home -> Bank (DLR) -> Old Street
+        # (Northern line, 經 Moorgate)。查詢的 TfL line id 維持不變（dlr/elizabeth/northern）。
         disruptions = _get_tfl_line_disruptions(['dlr', 'elizabeth', 'northern'])
 
         relevant = []
@@ -433,8 +428,7 @@ def check_office_route_disruption():
         print(f"辦公室路線檢查失敗: {e}")
         return (
             "the route to office check failed. You can check manually here: "
-            f"[Leg 1]({CITYMAPPER_OFFICE_LEG1_URL}) / [Leg 2]({CITYMAPPER_OFFICE_LEG2_URL}) / "
-            f"[Alt Route]({CITYMAPPER_OFFICE_ALT_URL})"
+            f"[Route]({CITYMAPPER_OFFICE_URL})"
         )
 
 
@@ -508,9 +502,7 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
         briefing += (
             f"\n🚇 *Office Route Check*\n"
             f"{office_status}\n"
-            f"🔗 [Leg 1: Home → Canary Wharf]({CITYMAPPER_OFFICE_LEG1_URL}) | "
-            f"[Leg 2: Canary Wharf → Liverpool Street]({CITYMAPPER_OFFICE_LEG2_URL}) | "
-            f"[Alt Route: Home → Old Street]({CITYMAPPER_OFFICE_ALT_URL})\n"
+            f"🔗 [Route: Home → Old Street]({CITYMAPPER_OFFICE_URL})\n"
         )
 
     if is_saturday or force_route_check:
