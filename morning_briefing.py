@@ -244,6 +244,12 @@ def check_lewisham_replacement_buses():
 
 def check_route_disruption():
     """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
+    result = _check_route_disruption_impl()
+    print(f"Route Check 判斷結果: {result}")
+    return result
+
+
+def _check_route_disruption_impl():
     try:
         is_closed, notice_texts, replacement_services = check_lewisham_replacement_buses()
     except Exception as e:
