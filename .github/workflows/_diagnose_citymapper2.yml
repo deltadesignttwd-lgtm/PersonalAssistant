@@ -1,4 +1,4 @@
-name: Diagnose Citymapper
+name: Diagnose Citymapper 2 (network capture)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
 
       - name: Run diagnostic
-        run: python _diagnose_citymapper.py
+        run: python _diagnose_citymapper2.py
