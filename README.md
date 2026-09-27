@@ -24,7 +24,8 @@ route pings on Saturday mornings.
   originally supplied)
 - **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
   closest station to Virgin Active Strand - also checks whether Lewisham
-  station itself is closed for rail replacement buses (see note below)
+  station itself is closed for rail replacement buses, and if so reports a
+  suggested alternative route from Hither Green (see notes below)
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -105,9 +106,11 @@ inputs for testing outside their normal day-of-week:
   (`https://api.tfl.gov.uk/Line/{ids}/Status`) rather than by "mode," since
   mode-based queries for some lines (e.g. `elizabeth-line` as a mode name)
   have been unreliable on TfL's API historically.
-- The Citymapper links in `morning_briefing.py` are decorative/fallback links
+- Most Citymapper links in `morning_briefing.py` are decorative/fallback links
   for the user to open manually if the TfL check itself fails - they are not
-  queried programmatically (Citymapper has no public routing-status API).
+  queried programmatically (Citymapper has no public routing-*status* API).
+  The one exception is `get_hither_green_to_strand_route()` (see note below),
+  which does call a real Citymapper journey-planning endpoint.
 - The Eventbrite WLW-events link is also decorative only: `eventbrite.co.uk`
   sits behind AWS WAF bot-challenge protection (a CAPTCHA "Human
   Verification" page) that blocks both plain HTTP requests and a headless
@@ -138,3 +141,18 @@ inputs for testing outside their normal day-of-week:
   those would make the check permanently report "closed". When either
   signal is found, `check_route_disruption()` reports Lewisham as closed
   ahead of (and instead of) the usual TfL Southeastern line status check.
+- When Lewisham is reported closed, `check_route_disruption()` also calls
+  `get_hither_green_to_strand_route()` to report a suggested alternative
+  route (Hither Green -> Virgin Active Strand, the next station south on the
+  same line). Citymapper's own `/directions` page is a pure client-side SPA
+  with no server-rendered data at all - confirmed by checking for
+  `__NEXT_DATA__`/`__NUXT__`/any embedded JSON, none of which exist; all
+  content is rendered by its JS bundle after the page loads. But that JS
+  calls a plain, unauthenticated JSON API
+  (`citymapper.com/api/7/journeys?start=...&end=...`) to fetch the actual
+  route data. Calling that endpoint with no headers gets a Cloudflare 403,
+  but a normal browser-like `User-Agent` + `Referer` + `Accept: application/json`
+  (`_CITYMAPPER_HEADERS`) is enough to get a clean 200 with full journey
+  data (legs, modes, live departure times, price) - no browser, cookies, or
+  session needed. `get_hither_green_to_strand_route()` picks the first
+  journey in the `SUGGESTED` section and summarises its legs.

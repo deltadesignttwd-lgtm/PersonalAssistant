@@ -242,6 +242,75 @@ def check_lewisham_replacement_buses():
     return is_closed, notice_texts, replacement_services
 
 
+# Citymapper 的 directions 頁面本身是純前端 SPA（無 SSR JSON，需執行 JS 才會有內容），
+# 但實測發現該頁面背後呼叫的 citymapper.com/api/7/journeys 是一個一般公開、不需登入
+# 的 JSON API：不帶任何 header 會被 Cloudflare 擋下（403），但帶上一般瀏覽器常見的
+# User-Agent / Referer / Accept 標頭即可直接用 requests 取得完整的即時路線資料
+# （時間、票價、各段交通方式），不需要真的啟動瀏覽器。
+CITYMAPPER_HITHER_GREEN_TO_STRAND_URL = (
+    "https://citymapper.com/directions?lang=en&startcoord=51.452024%2C-0.000944"
+    "&endcoord=51.510131%2C-0.121783&startname=Hither+Green&endname=Virgin+Active+Strand"
+    "&endaddress=Strand%2C+London%2C+UK"
+)
+_CITYMAPPER_JOURNEYS_API_URL = (
+    "https://citymapper.com/api/7/journeys"
+    "?start=51.452024%2C-0.000944"
+    "&end=51.510131%2C-0.121783"
+    "&eaddr=Strand%2C%20London%2C%20UK"
+    "&sname=Hither%20Green"
+    "&ename=Virgin%20Active%20Strand"
+    "&region_id=uk-london"
+    "&include_stepfree=1"
+    "&include_via_microtransit=1"
+    "&status_format=html"
+)
+_CITYMAPPER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://citymapper.com/directions",
+    "Accept": "application/json",
+}
+
+
+def get_hither_green_to_strand_route():
+    """呼叫 Citymapper journeys API，回傳從 Hither Green 到 Virgin Active Strand
+    的建議路線摘要文字（給 Lewisham 車站關閉時作為替代路線參考）"""
+    res = requests.get(_CITYMAPPER_JOURNEYS_API_URL, headers=_CITYMAPPER_HEADERS, timeout=20)
+    res.raise_for_status()
+    data = res.json()
+
+    sections = data.get("sections", [])
+    journeys = data.get("journeys", [])
+    suggested = next((s for s in sections if s.get("id") == "SUGGESTED"), None)
+    if not suggested or not suggested.get("journeys"):
+        raise RuntimeError("Citymapper 回應中找不到建議路線")
+    journey = journeys[suggested["journeys"][0]]
+
+    duration_min = round(journey.get("duration_seconds", 0) / 60)
+    price = journey.get("formatted_price", "N/A")
+
+    steps = []
+    for leg in journey.get("legs", []):
+        mode = leg.get("mode")
+        if mode == "walk":
+            mins = round(leg.get("duration_seconds", 0) / 60)
+            if mins > 0:
+                steps.append(f"🚶 Walk {mins} min")
+        elif mode == "transit":
+            routes = leg.get("routes", [])
+            route_name = routes[0].get("display_name") if routes else "Transit"
+            departures = leg.get("departures", [])
+            dep = departures[0] if departures else {}
+            time_name = dep.get("time_name", "")
+            dest = dep.get("destination_name", "")
+            steps.append(f"🚆 {route_name} to {dest} ({time_name})")
+
+    route_desc = " → ".join(steps) if steps else "Route details unavailable"
+    return f"{route_desc}\nTotal: {duration_min} min, {price}"
+
+
 def check_route_disruption():
     """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
     result = _check_route_disruption_impl()
@@ -258,11 +327,18 @@ def _check_route_disruption_impl():
 
     if is_closed:
         details = "; ".join(notice_texts) if notice_texts else f"{replacement_services} rail replacement bus service(s) found on the departure board"
-        return (
+        message = (
             f"🔴 Lewisham station appears to be closed - rail replacement buses in operation.\n"
             f"{details}\n"
-            f"🔗 [Check live departures]({NATIONALRAIL_LEWISHAM_URL})"
         )
+        try:
+            route_summary = get_hither_green_to_strand_route()
+            message += f"\n🚏 Alternative route from Hither Green:\n{route_summary}\n"
+        except Exception as e:
+            print(f"Hither Green → Strand 路線查詢失敗: {e}")
+            message += f"\n🔗 [Check route from Hither Green]({CITYMAPPER_HITHER_GREEN_TO_STRAND_URL})\n"
+        message += f"🔗 [Check live departures]({NATIONALRAIL_LEWISHAM_URL})"
+        return message
 
     try:
         # Lewisham 有 Southeastern 直達車到 Charing Cross（步行至 Strand 約 5 分鐘），
