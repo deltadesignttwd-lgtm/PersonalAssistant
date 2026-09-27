@@ -274,12 +274,24 @@ _CITYMAPPER_HEADERS = {
 }
 
 
-def get_hither_green_to_strand_route():
+def get_hither_green_to_strand_route(max_attempts=3):
     """呼叫 Citymapper journeys API，回傳從 Hither Green 到 Virgin Active Strand
-    的建議路線摘要文字（給 Lewisham 車站關閉時作為替代路線參考）"""
-    res = requests.get(_CITYMAPPER_JOURNEYS_API_URL, headers=_CITYMAPPER_HEADERS, timeout=20)
-    res.raise_for_status()
-    data = res.json()
+    的建議路線摘要文字（給 Lewisham 車站關閉時作為替代路線參考）。
+    實測過偶爾會超過 20 秒逾時，因此加上重試機制"""
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.get(_CITYMAPPER_JOURNEYS_API_URL, headers=_CITYMAPPER_HEADERS, timeout=25)
+            res.raise_for_status()
+            data = res.json()
+            break
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"Citymapper journeys API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+    else:
+        raise last_error
 
     sections = data.get("sections", [])
     journeys = data.get("journeys", [])
