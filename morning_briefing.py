@@ -538,7 +538,14 @@ def send_route_only_update(now_local):
 
 
 def main():
-    now_local = datetime.now(LOCAL_TZ)
+    # 手動測試用：可透過 SIMULATED_NOW（ISO 格式，例如 2026-09-29T07:00:00）
+    # 模擬「現在」是哪一天/幾點，藉此測試平日/週末專屬區塊在正確條件下的內容，
+    # 不受實際執行當天是星期幾影響。留空則使用真實現在時間。
+    simulated_now = os.environ.get("SIMULATED_NOW", "").strip()
+    if simulated_now:
+        now_local = datetime.fromisoformat(simulated_now).replace(tzinfo=LOCAL_TZ)
+    else:
+        now_local = datetime.now(LOCAL_TZ)
     mode = os.environ.get("MODE", "full").strip().lower()
     force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
     force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"

@@ -96,13 +96,21 @@ you've also enabled cron-job.org's failure-notification emails.
 ## Manual testing
 
 Both workflows accept manual `workflow_dispatch` runs from the Actions tab
-(or via the API). `morning-briefing.yml` additionally takes two boolean
-inputs for testing outside their normal day-of-week:
+(or via the API). `morning-briefing.yml` additionally takes three inputs for
+testing outside their normal day-of-week:
 
-- `force_route_check` - include the Saturday gym route check even on a
-  non-Saturday
-- `force_office_check` - include the office route check even on a
+- `force_route_check` (boolean) - include the Saturday gym route check even
+  on a non-Saturday
+- `force_office_check` (boolean) - include the office route check even on a
   non-weekday
+- `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
+  simulate "now" as this date/time instead of the real current time, so
+  day-of-week-specific sections (WLW Thu/Fri, office Mon-Fri, gym Saturday)
+  react as if it were actually that day - unlike the two `force_*` flags
+  above (which only add a section on top of whatever the real day already
+  shows), this lets you see, for example, exactly what a genuine Monday
+  07:00 run would send, with no Saturday-only content mixed in just because
+  today happens to be a Saturday. Leave blank to use the real current time.
 
 ## Notes on the route checks
 
