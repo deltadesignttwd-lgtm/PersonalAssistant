@@ -22,11 +22,14 @@ route pings on Saturday mornings.
 - **Thursday and Friday only:** a link to London's WLW (women loving women)
   events on Eventbrite - not scraped/checked programmatically (see note
   below), just a direct link to open and check yourself
-- **Monday-Friday only:** Office Route Check - reports on the commute route
-  home -> Bank via DLR -> Old Street via Northern line (decoded from the
-  Citymapper link originally supplied), by querying TfL status for the
-  `dlr`, `elizabeth`, and `northern` lines - the `elizabeth` line query is
-  kept even though the current route doesn't use it (see note below)
+- **Monday-Friday only, and only if disrupted:** Office Route Check - checks
+  the commute route home -> Bank via DLR -> Old Street via Northern line
+  (decoded from the Citymapper link originally supplied), by querying TfL
+  status for the `dlr`, `elizabeth`, and `northern` lines - the `elizabeth`
+  line query is kept even though the current route doesn't use it (see note
+  below). This section is only included in the briefing when the route is
+  actually disrupted (or the check itself fails) - a clear route adds
+  nothing to the message at all
 - **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
   closest station to Virgin Active Strand - also checks whether Lewisham
   station itself is closed for rail replacement buses, and if so reports a
@@ -129,6 +132,13 @@ testing outside their normal day-of-week:
   `_IRRELEVANT_OFFICE_ROUTE_KEYWORDS` filtering list unchanged - the
   `elizabeth` line query is now unused by the displayed route but was left
   in place on request rather than trimmed.
+- `check_office_route_disruption()` returns `None` when the route is clear -
+  `send_full_briefing()` only appends the "🚇 Office Route Check" section
+  (header, status line, and link) when the return value isn't `None`, so a
+  clear route contributes nothing to the message at all, not even a "clear"
+  line. A genuine check failure (TfL API error) still returns a fallback
+  message and is still shown, since that's a different, actionable
+  situation from "nothing wrong".
 - Most Citymapper links in `morning_briefing.py` are decorative/fallback links
   for the user to open manually if the TfL check itself fails - they are not
   queried programmatically (Citymapper has no public routing-*status* API).

@@ -410,7 +410,8 @@ def _mentions_irrelevant_office_location(reason_text):
 
 
 def check_office_route_disruption():
-    """檢查平日通勤路線（Lewisham → Bank [DLR] → Old Street [Northern line]）的即時路況"""
+    """檢查平日通勤路線（Lewisham → Bank [DLR] → Old Street [Northern line]）的即時路況。
+    路線正常時回傳 None，代表晨報中完全不顯示這個區塊（使用者只想在真的有中斷時才看到）"""
     try:
         # 路線由使用者提供的 Citymapper 連結解碼確認：home -> Bank (DLR) -> Old Street
         # (Northern line, 經 Moorgate)。查詢的 TfL line id 維持不變（dlr/elizabeth/northern）。
@@ -424,7 +425,7 @@ def check_office_route_disruption():
             relevant.append(d)
 
         if not relevant:
-            return "the route to office is clear ✅"
+            return None
         details = "; ".join(relevant)
         return f"the route to office is disrupted 🔴 because {details}"
     except Exception as e:
@@ -508,11 +509,12 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
 
     if is_weekday or force_office_check:
         office_status = check_office_route_disruption()
-        briefing += (
-            f"\n🚇 *Office Route Check*\n"
-            f"{office_status}\n"
-            f"🔗 [Route: Home → Old Street]({CITYMAPPER_OFFICE_URL})\n"
-        )
+        if office_status is not None:
+            briefing += (
+                f"\n🚇 *Office Route Check*\n"
+                f"{office_status}\n"
+                f"🔗 [Route: Home → Old Street]({CITYMAPPER_OFFICE_URL})\n"
+            )
 
     if is_saturday or force_route_check:
         route_status = check_route_disruption()
