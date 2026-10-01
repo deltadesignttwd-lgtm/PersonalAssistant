@@ -1,4 +1,4 @@
-name: Diagnose Common Press Scraping 4
+name: Diagnose Common Press Scraping 5
 
 on:
   workflow_dispatch: {}
@@ -19,4 +19,4 @@ jobs:
         run: pip install requests
 
       - name: Run diagnostics
-        run: python _diagnose_commonpress4.py
+        run: python _diagnose_commonpress5.py
