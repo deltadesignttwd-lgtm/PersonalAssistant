@@ -571,18 +571,20 @@ def _scrape_old_nunshead():
     return events
 
 
-def check_wlw_events():
+def check_wlw_events(reference_date):
     """檢查四個場地（The Common Press、La Camionera、Dalston Superstore、
     Old Nun's Head）在「即將到來的星期四」與「即將到來的星期五」有哪些活動。
-    沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；只要有任何一個來源
-    抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時才回傳備用訊息。"""
-    result = _check_wlw_events_impl()
+    「即將到來」是相對於 reference_date 算的（晨報呼叫時傳入 now_local.date()），
+    這樣 SIMULATED_NOW 測試才能正確模擬「某天跑出來的結果」，而不是永遠用真實的
+    系統現在時間去算。沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；
+    只要有任何一個來源抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時
+    才回傳備用訊息。"""
+    result = _check_wlw_events_impl(reference_date)
     print(f"WLW Events Check 判斷結果: {result}")
     return result
 
 
-def _check_wlw_events_impl():
-    today = datetime.now(LOCAL_TZ).date()
+def _check_wlw_events_impl(today):
     thursday = today + timedelta(days=(3 - today.weekday()) % 7)
     friday = today + timedelta(days=(4 - today.weekday()) % 7)
 
@@ -711,7 +713,7 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
         )
 
     if is_sunday or force_wlw_check:
-        wlw_events = check_wlw_events()
+        wlw_events = check_wlw_events(now_local.date())
         if wlw_events is not None:
             briefing += (
                 f"\n🎀 *Upcoming Thu/Fri Events*\n"
