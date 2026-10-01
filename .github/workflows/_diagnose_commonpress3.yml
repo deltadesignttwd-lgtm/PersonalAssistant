@@ -1,4 +1,4 @@
-name: Diagnose Common Press Scraping 2
+name: Diagnose Common Press Scraping 3
 
 on:
   workflow_dispatch: {}
@@ -16,7 +16,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
 
       - name: Run diagnostics
-        run: python _diagnose_commonpress2.py
+        run: python _diagnose_commonpress3.py
