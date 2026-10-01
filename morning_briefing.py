@@ -3,7 +3,8 @@ import os
 import re
 import time
 import requests
-from datetime import datetime, timedelta, timezone
+from bs4 import BeautifulSoup
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
@@ -434,6 +435,191 @@ def check_office_route_disruption():
         )
 
 
+# 每週日檢查這四個場地的「即將到來的星期四/星期五」活動。The Common Press 和
+# La Camionera 的「活動」頁面本身是前端渲染（Wix 的 Events app、Citymapper 風格
+# 的純 SPA），但實測發現兩者的活動清單實際上都是嵌入 OutSavvy 的活動資料：
+# The Common Press 頁面裡的日曆小工具其實是 outsavvy.com/calendar/1953（透過瀏覽器
+# network capture 找到的），而 OutSavvy 本身也有該場地自己的 organiser 清單頁
+# （純 HTML，可直接 requests 抓取），比起解析日曆小工具更穩定好讀。
+_WLW_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
+COMMONPRESS_EVENTS_URL = "https://www.outsavvy.com/organiser/the-common-press"
+LA_CAMIONERA_EVENTS_URL = "https://www.outsavvy.com/organiser/la-camionera"
+DALSTON_SUPERSTORE_EVENTS_URL = "https://dalstonsuperstore.com/whats-on/"
+OLD_NUNSHEAD_EVENTS_URL = "https://www.theoldnunshead.co.uk/events"
+
+
+def _parse_outsavvy_date(date_text):
+    """解析 OutSavvy organiser 頁面的日期文字，例如
+    'Thursday 8th October 2026 (+ 1 other date)' -> date(2026, 10, 8)。
+    只取第一個（最近的）日期，'(+ N other dates)' 的部分忽略不處理。"""
+    match = re.search(r"(\d{1,2})\w*\s+([A-Za-z]+)\s+(\d{4})", date_text)
+    if not match:
+        return None
+    day, month_name, year = match.groups()
+    try:
+        return datetime.strptime(f"{day} {month_name} {year}", "%d %B %Y").date()
+    except ValueError:
+        return None
+
+
+def _scrape_outsavvy_organiser(venue_name, url):
+    """OutSavvy organiser 頁面把每個活動列成 <h5>標題</h5>，包在 <a href> 裡，
+    同一個 <a> 底下有個 <span class="copy"> 顯示日期文字"""
+    res = requests.get(url, headers=_WLW_HEADERS, timeout=20)
+    res.raise_for_status()
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    events = []
+    for h5 in soup.find_all("h5"):
+        title = h5.get_text(strip=True)
+        if not title:
+            continue
+        anchor = h5.find_parent("a")
+        if not anchor:
+            continue
+        time_span = anchor.find("span", class_="copy")
+        if not time_span:
+            continue
+        event_date = _parse_outsavvy_date(time_span.get_text(strip=True))
+        if event_date is None:
+            continue
+        events.append((venue_name, title, event_date, anchor.get("href")))
+    return events
+
+
+def _scrape_dalston_superstore():
+    """Dalston Superstore 的活動清單只給「幾號」+「星期幾文字」，沒有月份/年份，
+    但清單本身是依時間順序排列、從今天開始。因此用「日期數字變小就代表跨月」來
+    推算月份/年份，而不用另外解析月份標題。"""
+    res = requests.get(DALSTON_SUPERSTORE_EVENTS_URL, headers=_WLW_HEADERS, timeout=20)
+    res.raise_for_status()
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    today = datetime.now(LOCAL_TZ).date()
+    month, year = today.month, today.year
+    prev_day = 0
+
+    events = []
+    seen_hrefs = set()
+    for li in soup.find_all("li", class_="event-thumbnail"):
+        day_el = li.find("h3", class_="events__event-thumbnail__date")
+        title_el = li.find("h2", class_="event-thumbnail__title")
+        anchor = li.find("a")
+        if not (day_el and title_el and anchor):
+            continue
+
+        href = anchor.get("href")
+        if not href or href in seen_hrefs:
+            continue
+
+        try:
+            day = int(day_el.get_text(strip=True))
+        except ValueError:
+            continue
+
+        if day < prev_day:
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+        prev_day = day
+
+        try:
+            event_date = date(year, month, day)
+        except ValueError:
+            continue
+
+        seen_hrefs.add(href)
+        events.append(("Dalston Superstore", title_el.get_text(strip=True), event_date, href))
+    return events
+
+
+def _scrape_old_nunshead():
+    """Old Nun's Head 的 Squarespace 活動頁在每個 <article> 裡都有完整的 ISO 日期
+    （<time class="event-date" datetime="2026-10-01">），但頁面會把同一個活動重複
+    輸出兩次（grid/list 兩種版面），因此用連結網址去重。"""
+    res = requests.get(OLD_NUNSHEAD_EVENTS_URL, headers=_WLW_HEADERS, timeout=20)
+    res.raise_for_status()
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    events = []
+    seen_hrefs = set()
+    for article in soup.find_all("article"):
+        link = article.find("a", class_="eventlist-title-link")
+        time_el = article.find("time", class_="event-date")
+        if not link or not time_el or not time_el.get("datetime"):
+            continue
+
+        href = link.get("href")
+        if not href or href in seen_hrefs:
+            continue
+
+        try:
+            event_date = datetime.strptime(time_el["datetime"], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+
+        seen_hrefs.add(href)
+        full_url = href if href.startswith("http") else f"https://www.theoldnunshead.co.uk{href}"
+        events.append(("Old Nun's Head", link.get_text(strip=True), event_date, full_url))
+    return events
+
+
+def check_wlw_events():
+    """檢查四個場地（The Common Press、La Camionera、Dalston Superstore、
+    Old Nun's Head）在「即將到來的星期四」與「即將到來的星期五」有哪些活動。
+    沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；只要有任何一個來源
+    抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時才回傳備用訊息。"""
+    today = datetime.now(LOCAL_TZ).date()
+    thursday = today + timedelta(days=(3 - today.weekday()) % 7)
+    friday = today + timedelta(days=(4 - today.weekday()) % 7)
+
+    scrapers = [
+        lambda: _scrape_outsavvy_organiser("The Common Press", COMMONPRESS_EVENTS_URL),
+        lambda: _scrape_outsavvy_organiser("La Camionera", LA_CAMIONERA_EVENTS_URL),
+        _scrape_dalston_superstore,
+        _scrape_old_nunshead,
+    ]
+
+    all_events = []
+    failures = 0
+    for scraper in scrapers:
+        try:
+            all_events.extend(scraper())
+        except Exception as e:
+            failures += 1
+            print(f"WLW 活動來源抓取失敗: {e}")
+
+    if failures == len(scrapers):
+        return (
+            "Couldn't fetch this week's events. Check manually: "
+            f"[The Common Press]({COMMONPRESS_EVENTS_URL}) | "
+            f"[La Camionera]({LA_CAMIONERA_EVENTS_URL}) | "
+            f"[Dalston Superstore]({DALSTON_SUPERSTORE_EVENTS_URL}) | "
+            f"[Old Nun's Head]({OLD_NUNSHEAD_EVENTS_URL})"
+        )
+
+    matches = [e for e in all_events if e[2] in (thursday, friday)]
+    if not matches:
+        return None
+
+    lines = []
+    for day_date, day_name in ((thursday, "Thursday"), (friday, "Friday")):
+        day_matches = sorted(e for e in matches if e[2] == day_date)
+        if not day_matches:
+            continue
+        lines.append(f"*{day_name} {day_date.strftime('%-d %B')}*")
+        for venue, title, _, href in day_matches:
+            lines.append(f"• [{title}]({href}) - {venue}")
+    return "\n".join(lines)
+
+
 def send_telegram(msg, max_attempts=3):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("TG_BOT_TOKEN / TG_CHAT_ID 未設定，請確認 repository secrets。")
@@ -459,9 +645,10 @@ def send_telegram(msg, max_attempts=3):
             time.sleep(3 * attempt)
 
 
-def send_full_briefing(now_local, force_route_check, force_office_check):
+def send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
+    is_sunday = now_local.weekday() == 6  # 6 = Sunday
     is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
 
     curr_price, lowest_price = get_octopus_agile_rates()
@@ -515,6 +702,14 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
             f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})\n"
         )
 
+    if is_sunday or force_wlw_check:
+        wlw_events = check_wlw_events()
+        if wlw_events is not None:
+            briefing += (
+                f"\n🎀 *Upcoming Thu/Fri Events*\n"
+                f"{wlw_events}\n"
+            )
+
     briefing += "\n祝你有美好的一天！💪"
     send_telegram(briefing)
 
@@ -542,11 +737,12 @@ def main():
     mode = os.environ.get("MODE", "full").strip().lower()
     force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
     force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"
+    force_wlw_check = os.environ.get("FORCE_WLW_CHECK", "").lower() == "true"
 
     if mode == "route_only":
         send_route_only_update(now_local)
     else:
-        send_full_briefing(now_local, force_route_check, force_office_check)
+        send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check)
 
 
 if __name__ == "__main__":

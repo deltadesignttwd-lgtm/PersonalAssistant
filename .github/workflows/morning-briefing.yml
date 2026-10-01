@@ -16,6 +16,10 @@ on:
         description: "Include the office route check even if today isn't a weekday (for testing)"
         type: boolean
         default: false
+      force_wlw_check:
+        description: "Include the Thu/Fri events check even if today isn't Sunday (for testing)"
+        type: boolean
+        default: false
       simulated_now:
         description: "Simulate 'now' as this ISO datetime (e.g. 2026-09-28T07:00:00) to test day-of-week-specific sections (for testing). Leave blank to use the real current time."
         type: string
@@ -43,5 +47,6 @@ jobs:
           MODE: full
           FORCE_ROUTE_CHECK: ${{ github.event.inputs.force_route_check }}
           FORCE_OFFICE_CHECK: ${{ github.event.inputs.force_office_check }}
+          FORCE_WLW_CHECK: ${{ github.event.inputs.force_wlw_check }}
           SIMULATED_NOW: ${{ github.event.inputs.simulated_now }}
         run: python morning_briefing.py

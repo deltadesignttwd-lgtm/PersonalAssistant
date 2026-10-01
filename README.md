@@ -31,6 +31,12 @@ route pings on Saturday mornings.
   closest station to Virgin Active Strand - also checks whether Lewisham
   station itself is closed for rail replacement buses, and if so reports a
   suggested alternative route from Hither Green (see notes below)
+- **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
+  four queer/community event venues (The Common Press, La Camionera, Dalston
+  Superstore, Old Nun's Head) for events on the coming Thursday and Friday,
+  and lists whatever is found with a link to each event (see notes below).
+  If none of the four venues have anything on either day, this section is
+  skipped entirely
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -96,17 +102,19 @@ you've also enabled cron-job.org's failure-notification emails.
 ## Manual testing
 
 Both workflows accept manual `workflow_dispatch` runs from the Actions tab
-(or via the API). `morning-briefing.yml` additionally takes three inputs for
+(or via the API). `morning-briefing.yml` additionally takes four inputs for
 testing outside their normal day-of-week:
 
 - `force_route_check` (boolean) - include the Saturday gym route check even
   on a non-Saturday
 - `force_office_check` (boolean) - include the office route check even on a
   non-weekday
+- `force_wlw_check` (boolean) - include the Thu/Fri events check even on a
+  non-Sunday
 - `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
   simulate "now" as this date/time instead of the real current time, so
-  day-of-week-specific sections (office Mon-Fri, gym Saturday) react as if
-  it were actually that day - unlike the two `force_*` flags
+  day-of-week-specific sections (office Mon-Fri, gym Saturday, events Sunday)
+  react as if it were actually that day - unlike the three `force_*` flags
   above (which only add a section on top of whatever the real day already
   shows), this lets you see, for example, exactly what a genuine Monday
   07:00 run would send, with no Saturday-only content mixed in just because
@@ -186,3 +194,43 @@ testing outside their normal day-of-week:
   data (legs, modes, live departure times, price) - no browser, cookies, or
   session needed. `get_hither_green_to_strand_route()` picks the first
   journey in the `SUGGESTED` section and summarises its legs.
+
+## Notes on the Sunday Thu/Fri events check
+
+- `check_wlw_events()` scrapes four separate venue websites and reports any
+  events on the coming Thursday and Friday. Each of the four scrapers
+  (`_scrape_outsavvy_organiser()`, `_scrape_dalston_superstore()`,
+  `_scrape_old_nunshead()`) is wrapped in its own try/except, so one source
+  failing doesn't block the others - the fallback "couldn't fetch, check
+  manually" message with all four links only shows up if *all four* fail.
+- The Common Press's own "upcoming events" page
+  (`commonpress.co.uk/upcoming-events-new`) is a Wix site whose events widget
+  is a third-party app widget with no server-rendered event data at all - a
+  plain `requests.get()` returns the page shell but zero event content.
+  Network-capture (via a temporary Playwright diagnostic) showed that widget
+  is actually just an embedded OutSavvy calendar
+  (`outsavvy.com/calendar/1953`) for this venue's own OutSavvy organiser
+  page. OutSavvy's organiser pages (`outsavvy.com/organiser/<slug>`) render
+  events as plain server-side HTML, so both The Common Press
+  (`COMMONPRESS_EVENTS_URL`, slug `the-common-press`) and La Camionera
+  (`LA_CAMIONERA_EVENTS_URL`, slug `la-camionera`, which already has its own
+  organiser page) are scraped via `_scrape_outsavvy_organiser()` from that
+  page instead - each event is an `<h5>` title inside an `<a href>`, with a
+  sibling `<span class="copy">` holding a date string like "Thursday 8th
+  October 2026 (+ 1 other date)". `_parse_outsavvy_date()` parses out the
+  first (soonest) date and ignores any "+N other dates" suffix.
+- Dalston Superstore's listing (`dalstonsuperstore.com/whats-on/`) is plain
+  WordPress HTML, but each event only gives a day-of-month number and a
+  weekday name (e.g. "01" / "Thursday") with no month or year anywhere in
+  the markup. Since the list itself is strictly chronological starting from
+  today, `_scrape_dalston_superstore()` tracks the running month/year itself
+  and rolls over to the next month whenever the day number decreases from
+  one event to the next (e.g. 31 -> 01).
+- Old Nun's Head's listing (`theoldnunshead.co.uk/events`, a Squarespace
+  site) is the cleanest of the four - each event has a full ISO date in
+  `<time class="event-date" datetime="2026-10-01">`. The page does render
+  every event twice (a grid view and a list view sharing the same markup),
+  so `_scrape_old_nunshead()` de-duplicates by the event's link.
+- `check_wlw_events()` returns `None` when neither Thursday nor Friday has
+  any events across all four venues, so (like the office route check) a
+  quiet week adds nothing to the briefing at all.
