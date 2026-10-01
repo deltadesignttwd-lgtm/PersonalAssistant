@@ -576,6 +576,12 @@ def check_wlw_events():
     Old Nun's Head）在「即將到來的星期四」與「即將到來的星期五」有哪些活動。
     沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；只要有任何一個來源
     抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時才回傳備用訊息。"""
+    result = _check_wlw_events_impl()
+    print(f"WLW Events Check 判斷結果: {result}")
+    return result
+
+
+def _check_wlw_events_impl():
     today = datetime.now(LOCAL_TZ).date()
     thursday = today + timedelta(days=(3 - today.weekday()) % 7)
     friday = today + timedelta(days=(4 - today.weekday()) % 7)
@@ -591,7 +597,9 @@ def check_wlw_events():
     failures = 0
     for scraper in scrapers:
         try:
-            all_events.extend(scraper())
+            found = scraper()
+            print(f"WLW 來源抓到 {len(found)} 個活動")
+            all_events.extend(found)
         except Exception as e:
             failures += 1
             print(f"WLW 活動來源抓取失敗: {e}")
