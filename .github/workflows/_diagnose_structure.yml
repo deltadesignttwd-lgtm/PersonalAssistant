@@ -1,4 +1,4 @@
-name: Diagnose Common Press Scraping 5
+name: Diagnose Events Structure
 
 on:
   workflow_dispatch: {}
@@ -16,7 +16,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests beautifulsoup4
 
       - name: Run diagnostics
-        run: python _diagnose_commonpress5.py
+        run: python _diagnose_structure.py
