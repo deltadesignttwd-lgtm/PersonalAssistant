@@ -15,8 +15,6 @@ LOCAL_TZ = ZoneInfo("Europe/London")
 LAT = 51.4615
 LON = -0.0102
 
-EVENTBRITE_WLW_URL = "https://www.eventbrite.co.uk/d/united-kingdom--london/events--today/lesbian/?page=1"
-
 # Hang Seng Bank 的 TT 匯率頁面本身沒有把數字寫進靜態 HTML；頁面的
 # clientlib-rates/ttTable.js 揭露了背後實際呼叫的公開 JSON API，直接呼叫即可，
 # 不需要瀏覽器渲染。
@@ -465,7 +463,6 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
     is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
-    is_thu_or_fri = now_local.weekday() in (3, 4)  # 3 = Thursday, 4 = Friday
 
     curr_price, lowest_price = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
@@ -499,12 +496,6 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
         briefing += (
             f"\n💷 *GBP/HKD TT Rate (Hang Seng)*\n"
             f"Couldn't fetch the rate this time. Check manually: [Hang Seng TT Rates]({HANGSENG_TT_RATES_PAGE_URL})\n"
-        )
-
-    if is_thu_or_fri:
-        briefing += (
-            f"\n👭 *WLW Events Today*\n"
-            f"🔗 [Check today's London WLW events]({EVENTBRITE_WLW_URL})\n"
         )
 
     if is_weekday or force_office_check:

@@ -19,9 +19,6 @@ route pings on Saturday mornings.
   section is skipped entirely (a genuine fetch failure still shows a
   "couldn't fetch" fallback, since that's a different situation from the
   rate simply being below the threshold)
-- **Thursday and Friday only:** a link to London's WLW (women loving women)
-  events on Eventbrite - not scraped/checked programmatically (see note
-  below), just a direct link to open and check yourself
 - **Monday-Friday only, and only if disrupted:** Office Route Check - checks
   the commute route home -> Bank via DLR -> Old Street via Northern line
   (decoded from the Citymapper link originally supplied), by querying TfL
@@ -108,8 +105,8 @@ testing outside their normal day-of-week:
   non-weekday
 - `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
   simulate "now" as this date/time instead of the real current time, so
-  day-of-week-specific sections (WLW Thu/Fri, office Mon-Fri, gym Saturday)
-  react as if it were actually that day - unlike the two `force_*` flags
+  day-of-week-specific sections (office Mon-Fri, gym Saturday) react as if
+  it were actually that day - unlike the two `force_*` flags
   above (which only add a section on top of whatever the real day already
   shows), this lets you see, for example, exactly what a genuine Monday
   07:00 run would send, with no Saturday-only content mixed in just because
@@ -144,13 +141,6 @@ testing outside their normal day-of-week:
   queried programmatically (Citymapper has no public routing-*status* API).
   The one exception is `get_hither_green_to_strand_route()` (see note below),
   which does call a real Citymapper journey-planning endpoint.
-- The Eventbrite WLW-events link is also decorative only: `eventbrite.co.uk`
-  sits behind AWS WAF bot-challenge protection (a CAPTCHA "Human
-  Verification" page) that blocks both plain HTTP requests and a headless
-  Playwright browser, and Eventbrite's official public API was deprecated in
-  2019 and only supports querying events you organize yourself. There's no
-  lightweight way to programmatically check which events are on today, so
-  the message just links to the search page instead.
 - The Hang Seng GBP/HKD TT rate is fetched from a genuine public JSON API
   (`HANGSENG_TT_RATES_API_URL`), not scraped from HTML. The bank's own TT
   rates page doesn't render the numbers into static HTML - they're loaded
