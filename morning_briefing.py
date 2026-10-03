@@ -39,6 +39,10 @@ def _parse_iso(ts):
     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
 
 
+# 低於這個價格（p/kWh）的時段會在晨報中被列為「便宜時段」
+OCTOPUS_CHEAP_THRESHOLD_P_PER_KWH = 20.0
+
+
 def get_octopus_agile_rates():
     """取得 Lewisham（London, Region _C）Octopus Agile 官方電價"""
     url = "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-C/standard-unit-rates/"
@@ -48,7 +52,7 @@ def get_octopus_agile_rates():
         data = res.json().get('results', [])
 
         if not data:
-            return "N/A", "N/A"
+            return "N/A", "N/A", "N/A"
 
         now = datetime.now(timezone.utc)
 
@@ -59,9 +63,6 @@ def get_octopus_agile_rates():
         )
         current_rate = f"{round(current_entry['value_inc_vat'], 2)} p/kWh" if current_entry else "N/A"
 
-        # 找出未來 24 小時內「最低電價的 3 小時區段」：先找出價格最低的 1 小時
-        # (2 個連續半小時 slot 平均價格最低的一段)，再往前推 2 小時形成 3 小時
-        # 區段，讓使用者知道提前多久開始用電最划算
         window_end = now + timedelta(hours=24)
         upcoming = sorted(
             (r for r in data if now <= _parse_iso(r['valid_from']) < window_end),
@@ -70,29 +71,48 @@ def get_octopus_agile_rates():
         if not upcoming:
             upcoming = sorted(data, key=lambda r: _parse_iso(r['valid_from']))
 
-        best_avg = None
-        best_hour_start = None
-        for i in range(len(upcoming) - 1):
-            slot_a, slot_b = upcoming[i], upcoming[i + 1]
-            # 確保兩個 slot 首尾相接，避免資料缺漏時誤判成連續的 1 小時
-            if _parse_iso(slot_a['valid_to']) != _parse_iso(slot_b['valid_from']):
-                continue
-            avg = (slot_a['value_inc_vat'] + slot_b['value_inc_vat']) / 2
-            if best_avg is None or avg < best_avg:
-                best_avg = avg
-                best_hour_start = _parse_iso(slot_a['valid_from'])
-
-        if best_hour_start is not None:
-            window_start_local = (best_hour_start - timedelta(hours=2)).astimezone(LOCAL_TZ).strftime("%H:%M")
-            window_end_local = (best_hour_start + timedelta(hours=1)).astimezone(LOCAL_TZ).strftime("%H:%M")
-            lowest_window = f"{window_start_local} - {window_end_local} (cheapest hour avg {round(best_avg, 2)} p/kWh)"
+        # 1. 未來 24 小時內價格最低的那一個時段（半小時 slot，不做任何合併）
+        if upcoming:
+            cheapest = min(upcoming, key=lambda r: r['value_inc_vat'])
+            cheapest_start_local = _parse_iso(cheapest['valid_from']).astimezone(LOCAL_TZ).strftime("%H:%M")
+            cheapest_end_local = _parse_iso(cheapest['valid_to']).astimezone(LOCAL_TZ).strftime("%H:%M")
+            cheapest_slot = f"{cheapest_start_local} - {cheapest_end_local} ({round(cheapest['value_inc_vat'], 2)} p/kWh)"
         else:
-            lowest_window = "N/A"
+            cheapest_slot = "N/A"
 
-        return current_rate, lowest_window
+        # 2. 未來 24 小時內所有低於 OCTOPUS_CHEAP_THRESHOLD_P_PER_KWH 的時段，把首尾相接
+        # 的連續半小時 slot 合併成一段區間（可能是半小時、一小時或更長）
+        cheap_windows = []
+        open_window = None  # (window_start, window_end, [prices])
+        for r in upcoming:
+            slot_start = _parse_iso(r['valid_from'])
+            slot_end = _parse_iso(r['valid_to'])
+            if r['value_inc_vat'] < OCTOPUS_CHEAP_THRESHOLD_P_PER_KWH:
+                if open_window is not None and open_window[1] == slot_start:
+                    open_window = (open_window[0], slot_end, open_window[2] + [r['value_inc_vat']])
+                else:
+                    if open_window is not None:
+                        cheap_windows.append(open_window)
+                    open_window = (slot_start, slot_end, [r['value_inc_vat']])
+            elif open_window is not None:
+                cheap_windows.append(open_window)
+                open_window = None
+        if open_window is not None:
+            cheap_windows.append(open_window)
+
+        if cheap_windows:
+            cheap_windows_str = ", ".join(
+                f"{start.astimezone(LOCAL_TZ).strftime('%H:%M')} - {end.astimezone(LOCAL_TZ).strftime('%H:%M')}"
+                f" (avg {round(sum(prices) / len(prices), 2)} p/kWh)"
+                for start, end, prices in cheap_windows
+            )
+        else:
+            cheap_windows_str = "None"
+
+        return current_rate, cheapest_slot, cheap_windows_str
     except Exception as e:
         print(f"Octopus API 錯誤: {e}")
-        return "擷取失敗", "擷取失敗"
+        return "擷取失敗", "擷取失敗", "擷取失敗"
 
 
 def get_weather_forecast(max_attempts=3):
@@ -661,7 +681,7 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
     is_sunday = now_local.weekday() == 6  # 6 = Sunday
     is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
 
-    curr_price, lowest_price = get_octopus_agile_rates()
+    curr_price, cheapest_slot, cheap_windows = get_octopus_agile_rates()
     curr_temp, temp_range, rain_msg = get_weather_forecast()
     gbp_hkd_rate = get_gbp_hkd_tt_rate()
 
@@ -669,7 +689,8 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
         f"☀️ *晨間晨報 ({today})*\n\n"
         f"⚡ *Octopus Agile 即時電價*\n"
         f"• 當前電價: `{curr_price}`\n"
-        f"• 未來 24h 最低電價 3 小時區段: `{lowest_price}`\n\n"
+        f"• 未來 24h 最低價時段: `{cheapest_slot}`\n"
+        f"• 未來 24h 低於 {OCTOPUS_CHEAP_THRESHOLD_P_PER_KWH}p/kWh 時段: `{cheap_windows}`\n\n"
         f"🌤️ *Lewisham 天氣預報*\n"
         f"• 當前氣溫: `{curr_temp}`\n"
         f"• 今日氣溫區間: `{temp_range}`\n"

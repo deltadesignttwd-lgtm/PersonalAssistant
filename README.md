@@ -8,10 +8,13 @@ route pings on Saturday mornings.
 
 **Daily, 07:00 BST/GMT** (`morning_briefing.py`, `MODE=full`):
 
-- Current Octopus Agile electricity price, plus the cheapest 3-hour window in
-  the next 24h - the cheapest 1-hour period (2 consecutive 30-min slots by
-  average price) plus the 2 hours immediately before it, so you know how
-  early to start using appliances (region `_C`, London/Lewisham)
+- Current Octopus Agile electricity price (region `_C`, London/Lewisham),
+  plus two things about the next 24h: the single cheapest half-hour/hour
+  slot, and every period below `OCTOPUS_CHEAP_THRESHOLD_P_PER_KWH`
+  (currently 20.0 p/kWh) - contiguous cheap slots are merged into one
+  window each (e.g. a run of cheap half-hours shows as one time range),
+  separate cheap periods are listed separately, and "None" is shown if
+  nothing in the next 24h is under the threshold
 - Lewisham weather (current temp, today's range, rain warning)
 - **Only when Bank Buy >= 10.5:** GBP/HKD TT (telegraphic transfer) exchange
   rate from Hang Seng Bank - Bank Buy/Sell rates plus the bank's
