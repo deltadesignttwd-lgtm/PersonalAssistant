@@ -1,4 +1,4 @@
-name: Diagnose Eventbrite Scraping
+name: Diagnose Eventbrite Scraping 2
 
 on:
   workflow_dispatch: {}
@@ -19,4 +19,4 @@ jobs:
         run: pip install requests
 
       - name: Run diagnostics
-        run: python _diagnose_eventbrite.py
+        run: python _diagnose_eventbrite2.py
