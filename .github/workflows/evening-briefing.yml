@@ -1,0 +1,29 @@
+name: Evening Briefing
+
+on:
+  # No internal "schedule:" trigger here on purpose - see README.md. Timing
+  # (weekdays 17:30 London time) is owned by an external cron-job.org job
+  # calling workflow_dispatch, same pattern as the other two workflows.
+  workflow_dispatch: {}
+
+jobs:
+  send-evening-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run evening route check
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          MODE: evening
+        run: python morning_briefing.py

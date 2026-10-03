@@ -2,7 +2,7 @@
 
 Sends a daily morning briefing (Octopus Agile electricity price, Lewisham
 weather, and a commute route check) to Telegram, plus extra high-frequency
-route pings on Saturday mornings.
+route pings on Saturday mornings and a weekday evening commute check.
 
 ## What it sends
 
@@ -47,6 +47,13 @@ route pings on Saturday mornings.
 - 10:30-10:55 BST, every 5 minutes
 - 11:00-11:15 BST, every 3 minutes
 
+**Monday-Friday, 17:30 BST/GMT** (`morning_briefing.py`, `MODE=evening`):
+
+- Office -> Home Route Check only (Old Street [Northern line] -> Bank ->
+  Lewisham [DLR], the reverse of the morning Office Route Check) - and
+  **only if disrupted**. If the route is clear, no message is sent at all
+  (see notes below)
+
 ## Required repository secrets
 
 Set under **Settings -> Secrets and variables -> Actions**:
@@ -74,10 +81,10 @@ confusing duplicate message hours after the real one.
 
 ### cron-job.org jobs required
 
-All three call the GitHub Actions "create a workflow dispatch event" API:
+All four call the GitHub Actions "create a workflow dispatch event" API:
 `POST https://api.github.com/repos/deltadesignttwd-lgtm/PersonalAssistant/actions/workflows/{workflow_file}/dispatches`
 
-Common settings for all three jobs:
+Common settings for all four jobs:
 - **Method:** POST
 - **Headers:**
   - `Authorization: Bearer <PAT>` (see below)
@@ -93,6 +100,7 @@ Common settings for all three jobs:
 | Daily briefing | `morning-briefing.yml` | Every day, 07:00 |
 | Saturday ping (5 min) | `saturday-route-pings.yml` | Saturdays, 10:30-10:55, every 5 min |
 | Saturday ping (3 min) | `saturday-route-pings.yml` | Saturdays, 11:00-11:15, every 3 min |
+| Evening commute check | `evening-briefing.yml` | Weekdays (Mon-Fri), 17:30 |
 
 ### GitHub token for cron-job.org
 
@@ -104,9 +112,9 @@ you've also enabled cron-job.org's failure-notification emails.
 
 ## Manual testing
 
-Both workflows accept manual `workflow_dispatch` runs from the Actions tab
-(or via the API). `morning-briefing.yml` additionally takes four inputs for
-testing outside their normal day-of-week:
+All three workflows accept manual `workflow_dispatch` runs from the Actions
+tab (or via the API). `morning-briefing.yml` additionally takes four inputs
+for testing outside their normal day-of-week:
 
 - `force_route_check` (boolean) - include the Saturday gym route check even
   on a non-Saturday
@@ -122,6 +130,13 @@ testing outside their normal day-of-week:
   shows), this lets you see, for example, exactly what a genuine Monday
   07:00 run would send, with no Saturday-only content mixed in just because
   today happens to be a Saturday. Leave blank to use the real current time.
+
+`evening-briefing.yml` takes no inputs - it has no day-of-week gating in the
+script itself (that's left entirely to when cron-job.org triggers it), so a
+manual run just checks the route right now. If the route is clear, nothing
+is sent to Telegram, but the Actions job log always prints the judgement
+(`check_home_from_office_route_disruption()`'s debug print), so a test run's
+outcome is visible either way.
 
 ## Notes on the route checks
 
@@ -147,6 +162,20 @@ testing outside their normal day-of-week:
   line. A genuine check failure (TfL API error) still returns a fallback
   message and is still shown, since that's a different, actionable
   situation from "nothing wrong".
+- `check_home_from_office_route_disruption()` (the 17:30 evening check) is
+  the reverse direction of the morning Office Route Check - decoded from a
+  separate Citymapper signature link the user supplied, confirming
+  Frank Reynolds Architects -> walk to Old Street -> Old Street [Northern
+  line] -> Bank -> Bank [DLR] -> Lewisham -> home. Since it's the same two
+  TfL lines (`dlr`/`northern`) as the morning check, just travelled in the
+  opposite direction, it queries the same `_get_tfl_line_disruptions(['dlr',
+  'elizabeth', 'northern'])` and reuses the existing
+  `_mentions_irrelevant_office_location()` keyword filter rather than
+  duplicating it. It also returns `None` when clear, but unlike the morning
+  check (which is just one section of a larger message), a `None` here
+  means `send_evening_update()` sends no Telegram message at all for that
+  run - this was a deliberate choice (confirmed with the user) over always
+  pinging with a "clear" status.
 - Most Citymapper links in `morning_briefing.py` are decorative/fallback links
   for the user to open manually if the TfL check itself fails - they are not
   queried programmatically (Citymapper has no public routing-*status* API).

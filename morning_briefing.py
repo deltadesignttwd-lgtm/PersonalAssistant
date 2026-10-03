@@ -34,6 +34,11 @@ CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2j
 # 使用者已決定改用這條經 Bank/Old Street 的路線作為唯一常用路線，故移除前者。
 CITYMAPPER_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlNtu4jAQhl8l8u2S4kMSHO52VVZdLaKr0oqLqorceIAswWYds22FePfaCaQEtIc7PDP%2B558PT3YoFwYNA0JTznsBklsjbKGVCzFOIhcBJd1hh4SUBqrK%2FUbTJWyWYKQ7BjNRrnrBWCupVS94%2BI7clVxrI%2BvKmFzFTpkNeiG%2BwinFnPsCJdbg01%2BNUKvgDt6ULmUVfDb5srCQ2wrtXdVPkxVKwqurHLhjCQuv%2BbhDsqisULmXIITGXdspo951fmgfJREndXdCB753oTJ3%2B1CMcD%2FFPrrWsnb04sbx56q9Hw%2FS%2BjqOSOQzVmfwWlifHsNLUS3FOhsxzGLuTe9OrZCE45Yg%2BuJm9QJLEPJFvLlQxPBJa%2BtgVE7YhYzeWsiKmuEjuh7foSfvyQrT6VsbtXqT5XqrbN3wGDne%2FVEKO9dmnbVevZqrahPeVnad3aOnxv4HW9wF28xy5BIT5kB7MJyn9BIs6fO%2Fgz0TOGdHoxN0t6WcWgNgu%2Fxowv6H30Qb656r6kI8%2Fh0dgOyP%2FGpMk0xOOvBaY3VqdskwYWfPM8G8g9Fvx2E5SOK150av2xf2oT9il4xpn%2FwLMk0axIOUob2ff2OKHLINNPYY8ZQNLA6K21VY1qt8pFioRWbg1xYq65j4koQM8ucc0%2FA5wjKMaCLCFCQJY8ZBcgBM8BydgN51Pwd%2Bn8hhoxjn8ennYDoiLIhvHurtt0UTpJgmIeYhTe4pHbJ4SMgnTIYY9ye3s2%2FTGy%2FwG0zVTBDv3wGqG18e"
 
+# Citymapper 路線資訊 (平日下班: Frank Reynolds Architects, Shepherdess Walk → walk to
+# Old Street → Old Street [Northern line] → Bank → Bank [DLR] → Lewisham → home)。
+# 解碼確認為 CITYMAPPER_OFFICE_URL 的反方向，使用同樣兩條 TfL line（Northern/DLR）。
+CITYMAPPER_HOME_FROM_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlF1v2yAUhv%2BKxe3ihg9%2F4Nx1aqZNi9Kp2dSLqkLMkMSLAxkmS6so%2F32AnQ%2B3Wrs7n3PgfQ%2BPOexByQ0YRQgjSgcREFvDbaWVS%2BEixS4jlXDBHpRaG9G4T5CiqyRLMpoPYngFEc4pAW6h4mvpyxO5q5olX4ODS%2F4yrFJCPrkCcWEtF17iYQ9E1ViuSr8jI6TvnMFgXHZmKc6CE82LYFQp5vZ2awEcIgp9eq1F8N%2FxeuXj5ry%2FoCQoFBhlvmQ1k0%2BV9fXbWsyskdKyMfEd73sIEngiAD5yFXSXkosdf%2FbQKLzwtYarxom6lNFbK1kVcD2AqTZ2KY0Cj74ry03fOPRq9YaVeqtsByokjgLfam7n2qzZudkpEzO%2F8VTy3bXZx%2FYUZ76wTzc0fYaLCMEtXlrg13jR8D26fYGXCFF%2ByfB0N3ocCfwvjjeTuz7C4x%2Fp0UPpP%2FEFRjdMjHvkjj2xoP8SXvImPT8HRTcG7RTMjV6fLtdJekwgSelruniYvU3XGVB0nDNw8MffmKqUbCPb%2FgjyDRm56BS3q7jWSrig41epBTPy91Y21hEJsjQrUyKKeE4xjxOZ05iTMolLkeOfPCeCYAwuOO8BF8LIJgz%2FbCk37jILF0b3rttBNAl2g%2BjHV7%2Bp90yEycu70XP34%2FKZ%2BOR%2B8yq6k89K16KJrk25rKwsbRPeDVu1qzDEWYxgDMl3REYJHiXoA0QjCIfT2%2Fsvs89e8Y80TXv69PAXRWdfxg%3D%3D"
+
 
 def _parse_iso(ts):
     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -455,6 +460,41 @@ def check_office_route_disruption():
         )
 
 
+def check_home_from_office_route_disruption():
+    """檢查平日下班路線（Old Street [Northern line] → Bank → Lewisham [DLR]）的即時
+    路況。與 check_office_route_disruption() 方向相反，但用的是同樣兩條 TfL line
+    （dlr/northern，elizabeth 一樣不會用到），所以沿用同一套排除關鍵字清單
+    （_IRRELEVANT_OFFICE_ROUTE_KEYWORDS/_mentions_irrelevant_office_location）。
+    路線正常時回傳 None，代表 17:30 的下班提醒完全不發送（使用者只想在真的有
+    中斷時才收到通知）"""
+    result = _check_home_from_office_route_disruption_impl()
+    print(f"Home Route Check 判斷結果: {result}")
+    return result
+
+
+def _check_home_from_office_route_disruption_impl():
+    try:
+        disruptions = _get_tfl_line_disruptions(['dlr', 'elizabeth', 'northern'])
+
+        relevant = []
+        for d in disruptions:
+            if _mentions_irrelevant_office_location(d):
+                print(f"忽略與本路線無關的通知: {d}")
+                continue
+            relevant.append(d)
+
+        if not relevant:
+            return None
+        details = "; ".join(relevant)
+        return f"the route home is disrupted 🔴 because {details}"
+    except Exception as e:
+        print(f"下班路線檢查失敗: {e}")
+        return (
+            "the route home check failed. You can check manually here: "
+            f"[Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
+        )
+
+
 # 每週日檢查這四個場地的「即將到來的星期四/星期五」活動。The Common Press 和
 # La Camionera 的「活動」頁面本身是前端渲染（Wix 的 Events app、Citymapper 風格
 # 的純 SPA），但實測發現兩者的活動清單實際上都是嵌入 OutSavvy 的活動資料：
@@ -756,6 +796,21 @@ def send_route_only_update(now_local):
     send_telegram(msg)
 
 
+def send_evening_update():
+    """平日 17:30 下班路線提醒。只檢查 Office → Home 的路況，路線正常時完全不發送
+    任何訊息（使用者只想在真的有中斷時才收到通知），這點與 route_only 模式（Saturday
+    高頻提醒，無論路況如何都會發送）不同。"""
+    home_route_status = check_home_from_office_route_disruption()
+    if home_route_status is None:
+        return
+    msg = (
+        f"🏠 *Office → Home Route Check*\n"
+        f"{home_route_status}\n\n"
+        f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
+    )
+    send_telegram(msg)
+
+
 def main():
     # 手動測試用：可透過 SIMULATED_NOW（ISO 格式，例如 2026-09-29T07:00:00）
     # 模擬「現在」是哪一天/幾點，藉此測試平日/週末專屬區塊在正確條件下的內容，
@@ -772,6 +827,8 @@ def main():
 
     if mode == "route_only":
         send_route_only_update(now_local)
+    elif mode == "evening":
+        send_evening_update()
     else:
         send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check)
 
