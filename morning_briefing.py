@@ -692,15 +692,18 @@ def _check_wlw_events_impl(today):
     if not matches:
         return None
 
-    lines = []
+    # 每個有活動的日子自成一段，段落之間用兩行 "---" 分隔（只有兩天都有活動時才會
+    # 出現分隔線；只有一天有活動就只有一段，沒有分隔線）。
+    day_sections = []
     for day_date, day_name in ((thursday, "Thursday"), (friday, "Friday")):
         day_matches = sorted(e for e in matches if e[2] == day_date)
         if not day_matches:
             continue
-        lines.append(f"*{day_name} {day_date.strftime('%-d %B')}*")
+        section_lines = [f"*{day_name} {day_date.strftime('%-d %B')}*"]
         for venue, title, _, href in day_matches:
-            lines.append(f"• [{title}]({href}) - {venue}")
-    return "\n".join(lines)
+            section_lines.append(f"[{title}]({href}) — {venue}")
+        day_sections.append("\n".join(section_lines))
+    return "\n---\n---\n".join(day_sections)
 
 
 def send_telegram(msg, max_attempts=3):
