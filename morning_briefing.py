@@ -507,12 +507,8 @@ def _check_home_from_office_route_disruption_impl():
         )
 
 
-# 每週日檢查這些場地/活動系列的「即將到來的星期四/星期五」活動。The Common Press 和
-# La Camionera 的「活動」頁面本身是前端渲染（Wix 的 Events app、Citymapper 風格
-# 的純 SPA），但實測發現兩者的活動清單實際上都是嵌入 OutSavvy 的活動資料：
-# The Common Press 頁面裡的日曆小工具其實是 outsavvy.com/calendar/1953（透過瀏覽器
-# network capture 找到的），而 OutSavvy 本身也有該場地自己的 organiser 清單頁
-# （純 HTML，可直接 requests 抓取），比起解析日曆小工具更穩定好讀。
+# 每週日檢查這些場地/活動系列的「即將到來的星期四/星期五」活動。La Camionera 自己的
+# OutSavvy organiser 清單頁（純 HTML，可直接 requests 抓取）就有完整活動清單。
 _WLW_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -520,7 +516,6 @@ _WLW_HEADERS = {
     )
 }
 
-COMMONPRESS_EVENTS_URL = "https://www.outsavvy.com/organiser/the-common-press"
 LA_CAMIONERA_EVENTS_URL = "https://www.outsavvy.com/organiser/la-camionera"
 OLD_NUNSHEAD_EVENTS_URL = "https://www.theoldnunshead.co.uk/events"
 PUB_QUIZ_EVENTS_URL = "https://www.eventbrite.com/cc/the-lesbian-pub-quiz-3867043/"
@@ -642,13 +637,13 @@ def _scrape_eventbrite_collection(series_name, url):
 
 
 def check_wlw_events(reference_date):
-    """檢查這些場地/活動系列（The Common Press、La Camionera、Old Nun's Head、
-    The Lesbian Pub Quiz、Lesbian Speed Dating）在
+    """檢查這些場地/活動系列（La Camionera、Old Nun's Head、The Lesbian Pub Quiz、
+    Lesbian Speed Dating）在
     「即將到來的星期四」與「即將到來的星期五」有哪些活動。
     「即將到來」是相對於 reference_date 算的（晨報呼叫時傳入 now_local.date()），
     這樣 SIMULATED_NOW 測試才能正確模擬「某天跑出來的結果」，而不是永遠用真實的
     系統現在時間去算。沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；
-    只要有任何一個來源抓取成功就以該來源結果為準，只有在五個來源「全部」失敗時
+    只要有任何一個來源抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時
     才回傳備用訊息。"""
     result = _check_wlw_events_impl(reference_date)
     print(f"WLW Events Check 判斷結果: {result}")
@@ -660,7 +655,6 @@ def _check_wlw_events_impl(today):
     friday = today + timedelta(days=(4 - today.weekday()) % 7)
 
     scrapers = [
-        lambda: _scrape_outsavvy_organiser("The Common Press", COMMONPRESS_EVENTS_URL),
         lambda: _scrape_outsavvy_organiser("La Camionera", LA_CAMIONERA_EVENTS_URL),
         _scrape_old_nunshead,
         lambda: _scrape_eventbrite_collection("The Lesbian Pub Quiz", PUB_QUIZ_EVENTS_URL),
@@ -681,7 +675,6 @@ def _check_wlw_events_impl(today):
     if failures == len(scrapers):
         return (
             "Couldn't fetch this week's events. Check manually: "
-            f"[The Common Press]({COMMONPRESS_EVENTS_URL}) | "
             f"[La Camionera]({LA_CAMIONERA_EVENTS_URL}) | "
             f"[Old Nun's Head]({OLD_NUNSHEAD_EVENTS_URL}) | "
             f"[The Lesbian Pub Quiz]({PUB_QUIZ_EVENTS_URL}) | "

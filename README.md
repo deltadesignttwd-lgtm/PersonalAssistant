@@ -35,12 +35,11 @@ route pings on Saturday mornings and a weekday evening commute check.
   station itself is closed for rail replacement buses, and if so reports a
   suggested alternative route from Hither Green (see notes below)
 - **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
-  three queer/community event venues (The Common Press, La Camionera, Old
-  Nun's Head) plus two recurring Eventbrite event series (The Lesbian Pub
-  Quiz, Lesbian Speed Dating) for events on the coming Thursday and Friday,
-  and lists whatever is found with a link to each event (see notes below).
-  If none of the five sources have anything on either day, this section is
-  skipped entirely
+  two queer/community event venues (La Camionera, Old Nun's Head) plus two
+  recurring Eventbrite event series (The Lesbian Pub Quiz, Lesbian Speed
+  Dating) for events on the coming Thursday and Friday, and lists whatever
+  is found with a link to each event (see notes below). If none of the four
+  sources have anything on either day, this section is skipped entirely
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -230,36 +229,26 @@ outcome is visible either way.
 
 ## Notes on the Sunday Thu/Fri events check
 
-- `check_wlw_events()` scrapes five separate sources and reports any events
-  on the coming Thursday and Friday. Each of the five scrapers
-  (`_scrape_outsavvy_organiser()` x2, `_scrape_old_nunshead()`,
+- `check_wlw_events()` scrapes four separate sources and reports any events
+  on the coming Thursday and Friday. Each of the four scrapers
+  (`_scrape_outsavvy_organiser()`, `_scrape_old_nunshead()`,
   `_scrape_eventbrite_collection()` x2) is wrapped in its own try/except, so
   one source failing doesn't block the others - the fallback "couldn't
-  fetch, check manually" message with all five links only shows up if *all
-  five* fail.
-- The Common Press's own "upcoming events" page
-  (`commonpress.co.uk/upcoming-events-new`) is a Wix site whose events widget
-  is a third-party app widget with no server-rendered event data at all - a
-  plain `requests.get()` returns the page shell but zero event content.
-  Network-capture (via a temporary Playwright diagnostic) showed that widget
-  is actually just an embedded OutSavvy calendar
-  (`outsavvy.com/calendar/1953`) for this venue's own OutSavvy organiser
-  page. OutSavvy's organiser pages (`outsavvy.com/organiser/<slug>`) render
-  events as plain server-side HTML, so both The Common Press
-  (`COMMONPRESS_EVENTS_URL`, slug `the-common-press`) and La Camionera
-  (`LA_CAMIONERA_EVENTS_URL`, slug `la-camionera`, which already has its own
-  organiser page) are scraped via `_scrape_outsavvy_organiser()` from that
-  page instead - each event is an `<h5>` title inside an `<a href>`, with a
-  sibling `<span class="copy">` holding a date string like "Thursday 8th
-  October 2026 (+ 1 other date)". `_parse_outsavvy_date()` parses out the
-  first (soonest) date and ignores any "+N other dates" suffix.
+  fetch, check manually" message with all four links only shows up if *all
+  four* fail.
+- La Camionera's listing (`outsavvy.com/organiser/la-camionera`) is scraped
+  via `_scrape_outsavvy_organiser()` - each event is an `<h5>` title inside
+  an `<a href>`, with a sibling `<span class="copy">` holding a date string
+  like "Thursday 8th October 2026 (+ 1 other date)". `_parse_outsavvy_date()`
+  parses out the first (soonest) date and ignores any "+N other dates"
+  suffix.
 - Old Nun's Head's listing (`theoldnunshead.co.uk/events`, a Squarespace
   site) has a full ISO date in each `<time class="event-date"
   datetime="2026-10-01">`. The page does render every event twice (a grid
   view and a list view sharing the same markup), so `_scrape_old_nunshead()`
   de-duplicates by the event's link.
 - `check_wlw_events()` returns `None` when neither Thursday nor Friday has
-  any events across all five sources, so (like the office route check) a
+  any events across all four sources, so (like the office route check) a
   quiet week adds nothing to the briefing at all.
 - The Lesbian Pub Quiz and Lesbian Speed Dating are recurring Eventbrite
   event series, scraped from their Eventbrite "collection" pages
