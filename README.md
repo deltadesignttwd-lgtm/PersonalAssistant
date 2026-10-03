@@ -35,11 +35,11 @@ route pings on Saturday mornings and a weekday evening commute check.
   station itself is closed for rail replacement buses, and if so reports a
   suggested alternative route from Hither Green (see notes below)
 - **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
-  four queer/community event venues (The Common Press, La Camionera, Dalston
-  Superstore, Old Nun's Head) for events on the coming Thursday and Friday,
-  and lists whatever is found with a link to each event (see notes below).
-  If none of the four venues have anything on either day, this section is
-  skipped entirely
+  three queer/community event venues (The Common Press, La Camionera, Old
+  Nun's Head) for events on the coming Thursday and Friday, and lists
+  whatever is found with a link to each event (see notes below). If none of
+  the three venues have anything on either day, this section is skipped
+  entirely
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -229,12 +229,12 @@ outcome is visible either way.
 
 ## Notes on the Sunday Thu/Fri events check
 
-- `check_wlw_events()` scrapes four separate venue websites and reports any
-  events on the coming Thursday and Friday. Each of the four scrapers
-  (`_scrape_outsavvy_organiser()`, `_scrape_dalston_superstore()`,
-  `_scrape_old_nunshead()`) is wrapped in its own try/except, so one source
-  failing doesn't block the others - the fallback "couldn't fetch, check
-  manually" message with all four links only shows up if *all four* fail.
+- `check_wlw_events()` scrapes three separate venue websites and reports any
+  events on the coming Thursday and Friday. Each of the three scrapers
+  (`_scrape_outsavvy_organiser()`, `_scrape_old_nunshead()`) is wrapped in
+  its own try/except, so one source failing doesn't block the others - the
+  fallback "couldn't fetch, check manually" message with all three links
+  only shows up if *all three* fail.
 - The Common Press's own "upcoming events" page
   (`commonpress.co.uk/upcoming-events-new`) is a Wix site whose events widget
   is a third-party app widget with no server-rendered event data at all - a
@@ -251,18 +251,11 @@ outcome is visible either way.
   sibling `<span class="copy">` holding a date string like "Thursday 8th
   October 2026 (+ 1 other date)". `_parse_outsavvy_date()` parses out the
   first (soonest) date and ignores any "+N other dates" suffix.
-- Dalston Superstore's listing (`dalstonsuperstore.com/whats-on/`) is plain
-  WordPress HTML, but each event only gives a day-of-month number and a
-  weekday name (e.g. "01" / "Thursday") with no month or year anywhere in
-  the markup. Since the list itself is strictly chronological starting from
-  today, `_scrape_dalston_superstore()` tracks the running month/year itself
-  and rolls over to the next month whenever the day number decreases from
-  one event to the next (e.g. 31 -> 01).
 - Old Nun's Head's listing (`theoldnunshead.co.uk/events`, a Squarespace
-  site) is the cleanest of the four - each event has a full ISO date in
-  `<time class="event-date" datetime="2026-10-01">`. The page does render
-  every event twice (a grid view and a list view sharing the same markup),
-  so `_scrape_old_nunshead()` de-duplicates by the event's link.
+  site) has a full ISO date in each `<time class="event-date"
+  datetime="2026-10-01">`. The page does render every event twice (a grid
+  view and a list view sharing the same markup), so `_scrape_old_nunshead()`
+  de-duplicates by the event's link.
 - `check_wlw_events()` returns `None` when neither Thursday nor Friday has
-  any events across all four venues, so (like the office route check) a
+  any events across all three venues, so (like the office route check) a
   quiet week adds nothing to the briefing at all.

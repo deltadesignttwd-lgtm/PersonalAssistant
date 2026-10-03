@@ -4,7 +4,7 @@ import re
 import time
 import requests
 from bs4 import BeautifulSoup
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
@@ -510,7 +510,6 @@ _WLW_HEADERS = {
 
 COMMONPRESS_EVENTS_URL = "https://www.outsavvy.com/organiser/the-common-press"
 LA_CAMIONERA_EVENTS_URL = "https://www.outsavvy.com/organiser/la-camionera"
-DALSTON_SUPERSTORE_EVENTS_URL = "https://dalstonsuperstore.com/whats-on/"
 OLD_NUNSHEAD_EVENTS_URL = "https://www.theoldnunshead.co.uk/events"
 
 
@@ -553,53 +552,6 @@ def _scrape_outsavvy_organiser(venue_name, url):
     return events
 
 
-def _scrape_dalston_superstore():
-    """Dalston Superstore 的活動清單只給「幾號」+「星期幾文字」，沒有月份/年份，
-    但清單本身是依時間順序排列、從今天開始。因此用「日期數字變小就代表跨月」來
-    推算月份/年份，而不用另外解析月份標題。"""
-    res = requests.get(DALSTON_SUPERSTORE_EVENTS_URL, headers=_WLW_HEADERS, timeout=20)
-    res.raise_for_status()
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    today = datetime.now(LOCAL_TZ).date()
-    month, year = today.month, today.year
-    prev_day = 0
-
-    events = []
-    seen_hrefs = set()
-    for li in soup.find_all("li", class_="event-thumbnail"):
-        day_el = li.find("h3", class_="events__event-thumbnail__date")
-        title_el = li.find("h2", class_="event-thumbnail__title")
-        anchor = li.find("a")
-        if not (day_el and title_el and anchor):
-            continue
-
-        href = anchor.get("href")
-        if not href or href in seen_hrefs:
-            continue
-
-        try:
-            day = int(day_el.get_text(strip=True))
-        except ValueError:
-            continue
-
-        if day < prev_day:
-            month += 1
-            if month > 12:
-                month = 1
-                year += 1
-        prev_day = day
-
-        try:
-            event_date = date(year, month, day)
-        except ValueError:
-            continue
-
-        seen_hrefs.add(href)
-        events.append(("Dalston Superstore", title_el.get_text(strip=True), event_date, href))
-    return events
-
-
 def _scrape_old_nunshead():
     """Old Nun's Head 的 Squarespace 活動頁在每個 <article> 裡都有完整的 ISO 日期
     （<time class="event-date" datetime="2026-10-01">），但頁面會把同一個活動重複
@@ -632,12 +584,12 @@ def _scrape_old_nunshead():
 
 
 def check_wlw_events(reference_date):
-    """檢查四個場地（The Common Press、La Camionera、Dalston Superstore、
-    Old Nun's Head）在「即將到來的星期四」與「即將到來的星期五」有哪些活動。
+    """檢查三個場地（The Common Press、La Camionera、Old Nun's Head）在
+    「即將到來的星期四」與「即將到來的星期五」有哪些活動。
     「即將到來」是相對於 reference_date 算的（晨報呼叫時傳入 now_local.date()），
     這樣 SIMULATED_NOW 測試才能正確模擬「某天跑出來的結果」，而不是永遠用真實的
     系統現在時間去算。沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；
-    只要有任何一個來源抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時
+    只要有任何一個來源抓取成功就以該來源結果為準，只有在三個來源「全部」失敗時
     才回傳備用訊息。"""
     result = _check_wlw_events_impl(reference_date)
     print(f"WLW Events Check 判斷結果: {result}")
@@ -651,7 +603,6 @@ def _check_wlw_events_impl(today):
     scrapers = [
         lambda: _scrape_outsavvy_organiser("The Common Press", COMMONPRESS_EVENTS_URL),
         lambda: _scrape_outsavvy_organiser("La Camionera", LA_CAMIONERA_EVENTS_URL),
-        _scrape_dalston_superstore,
         _scrape_old_nunshead,
     ]
 
@@ -671,7 +622,6 @@ def _check_wlw_events_impl(today):
             "Couldn't fetch this week's events. Check manually: "
             f"[The Common Press]({COMMONPRESS_EVENTS_URL}) | "
             f"[La Camionera]({LA_CAMIONERA_EVENTS_URL}) | "
-            f"[Dalston Superstore]({DALSTON_SUPERSTORE_EVENTS_URL}) | "
             f"[Old Nun's Head]({OLD_NUNSHEAD_EVENTS_URL})"
         )
 
