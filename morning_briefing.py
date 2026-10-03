@@ -245,12 +245,24 @@ def check_lewisham_replacement_buses():
         raise RuntimeError("在頁面中找不到 __NEXT_DATA__")
     data = json.loads(match.group(1))
 
-    queries = data.get("props", {}).get("pageProps", {}).get("liveTrainsState", {}).get("queries", [])
-    pages = queries[0].get("state", {}).get("data", {}).get("pages", []) if queries else []
+    # 用 "x.get(key) or default" 而不是 "x.get(key, default)"：實測發現這個 API 在
+    # 「目前沒有任何即時公告」時會回傳 "nrccMessages": null（不是省略這個欄位，也不是
+    # 空陣列 []）。.get(key, default) 的 default 只有在 key 完全不存在時才會生效，key
+    # 存在但值是 null 一樣會拿到 None，導致後面對 None 做 for 迴圈直接丟出
+    # TypeError: 'NoneType' object is not iterable - 這幾乎每次「沒有公告」（最常見的
+    # 情況）都會發生，而不是罕見的個案。整條鏈路都改用這個寫法以防其他欄位也有同樣情況。
+    props = data.get("props") or {}
+    page_props = props.get("pageProps") or {}
+    live_trains_state = page_props.get("liveTrainsState") or {}
+    queries = live_trains_state.get("queries") or []
+
+    state = (queries[0].get("state") or {}) if queries else {}
+    state_data = state.get("data") or {}
+    pages = state_data.get("pages") or []
     page = pages[0] if pages else {}
 
-    nrcc_messages = page.get("nrccMessages", [])
-    services = page.get("services", [])
+    nrcc_messages = page.get("nrccMessages") or []
+    services = page.get("services") or []
 
     notice_texts = []
     for m in nrcc_messages:
