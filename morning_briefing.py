@@ -507,7 +507,7 @@ def _check_home_from_office_route_disruption_impl():
         )
 
 
-# 每週日檢查這四個場地的「即將到來的星期四/星期五」活動。The Common Press 和
+# 每週日檢查這些場地/活動系列的「即將到來的星期四/星期五」活動。The Common Press 和
 # La Camionera 的「活動」頁面本身是前端渲染（Wix 的 Events app、Citymapper 風格
 # 的純 SPA），但實測發現兩者的活動清單實際上都是嵌入 OutSavvy 的活動資料：
 # The Common Press 頁面裡的日曆小工具其實是 outsavvy.com/calendar/1953（透過瀏覽器
@@ -523,6 +523,8 @@ _WLW_HEADERS = {
 COMMONPRESS_EVENTS_URL = "https://www.outsavvy.com/organiser/the-common-press"
 LA_CAMIONERA_EVENTS_URL = "https://www.outsavvy.com/organiser/la-camionera"
 OLD_NUNSHEAD_EVENTS_URL = "https://www.theoldnunshead.co.uk/events"
+PUB_QUIZ_EVENTS_URL = "https://www.eventbrite.com/cc/the-lesbian-pub-quiz-3867043/"
+SPEED_DATING_EVENTS_URL = "https://www.eventbrite.com/cc/lesbian-speed-dating-3678189/"
 
 
 def _parse_outsavvy_date(date_text):
@@ -595,13 +597,58 @@ def _scrape_old_nunshead():
     return events
 
 
+# Eventbrite 的 collection（/cc/<slug>-<id>/）頁面是這個系列活動的「所有場次」清單，
+# 跟一般搜尋頁（eventbrite.co.uk/d/...，會被 AWS WAF 擋下）不同，這種頁面實測是
+# 乾淨的 200、沒有 bot 驗證。頁面的 JSON-LD 裡有一個 @type=ItemList，
+# itemListElement 裡列出這個系列「過去辦過」與「尚未到來」的所有場次（混在一起、
+# 沒有排序），每個場次有帶時區 offset 的 startDate（例如
+# "2026-10-08T19:00:00+0100"），offset 已經是倫敦當地時間的正確 BST/GMT，所以
+# 直接 .date() 就是正確的本地日期，不需要再轉時區。因為後面 check_wlw_events()
+# 本來就只挑出剛好等於目標星期四/五日期的場次，過去辦過的場次自然不會命中，
+# 不需要額外篩選「只要未來」的邏輯。
+def _scrape_eventbrite_collection(series_name, url):
+    """已取消的場次標題會以 'CANCELLED' 開頭（Eventbrite 自己加的），直接排除。"""
+    res = requests.get(url, headers=_WLW_HEADERS, timeout=20)
+    res.raise_for_status()
+
+    item_list = None
+    for block in re.findall(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', res.text, re.DOTALL):
+        try:
+            parsed = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if parsed.get("@type") == "ItemList":
+            item_list = parsed
+            break
+    if item_list is None:
+        raise RuntimeError("在頁面中找不到 ItemList JSON-LD")
+
+    events = []
+    for item in item_list.get("itemListElement", []):
+        event = (item or {}).get("item") or {}
+        title = event.get("name") or ""
+        if title.upper().startswith("CANCELLED"):
+            continue
+        start = event.get("startDate")
+        href = event.get("url")
+        if not start or not href:
+            continue
+        try:
+            event_date = datetime.fromisoformat(start).date()
+        except ValueError:
+            continue
+        events.append((series_name, title, event_date, href))
+    return events
+
+
 def check_wlw_events(reference_date):
-    """檢查三個場地（The Common Press、La Camionera、Old Nun's Head）在
+    """檢查這些場地/活動系列（The Common Press、La Camionera、Old Nun's Head、
+    The Lesbian Pub Quiz、Lesbian Speed Dating）在
     「即將到來的星期四」與「即將到來的星期五」有哪些活動。
     「即將到來」是相對於 reference_date 算的（晨報呼叫時傳入 now_local.date()），
     這樣 SIMULATED_NOW 測試才能正確模擬「某天跑出來的結果」，而不是永遠用真實的
     系統現在時間去算。沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；
-    只要有任何一個來源抓取成功就以該來源結果為準，只有在三個來源「全部」失敗時
+    只要有任何一個來源抓取成功就以該來源結果為準，只有在五個來源「全部」失敗時
     才回傳備用訊息。"""
     result = _check_wlw_events_impl(reference_date)
     print(f"WLW Events Check 判斷結果: {result}")
@@ -616,6 +663,8 @@ def _check_wlw_events_impl(today):
         lambda: _scrape_outsavvy_organiser("The Common Press", COMMONPRESS_EVENTS_URL),
         lambda: _scrape_outsavvy_organiser("La Camionera", LA_CAMIONERA_EVENTS_URL),
         _scrape_old_nunshead,
+        lambda: _scrape_eventbrite_collection("The Lesbian Pub Quiz", PUB_QUIZ_EVENTS_URL),
+        lambda: _scrape_eventbrite_collection("Lesbian Speed Dating", SPEED_DATING_EVENTS_URL),
     ]
 
     all_events = []
@@ -634,7 +683,9 @@ def _check_wlw_events_impl(today):
             "Couldn't fetch this week's events. Check manually: "
             f"[The Common Press]({COMMONPRESS_EVENTS_URL}) | "
             f"[La Camionera]({LA_CAMIONERA_EVENTS_URL}) | "
-            f"[Old Nun's Head]({OLD_NUNSHEAD_EVENTS_URL})"
+            f"[Old Nun's Head]({OLD_NUNSHEAD_EVENTS_URL}) | "
+            f"[The Lesbian Pub Quiz]({PUB_QUIZ_EVENTS_URL}) | "
+            f"[Lesbian Speed Dating]({SPEED_DATING_EVENTS_URL})"
         )
 
     matches = [e for e in all_events if e[2] in (thursday, friday)]

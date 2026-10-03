@@ -36,10 +36,11 @@ route pings on Saturday mornings and a weekday evening commute check.
   suggested alternative route from Hither Green (see notes below)
 - **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
   three queer/community event venues (The Common Press, La Camionera, Old
-  Nun's Head) for events on the coming Thursday and Friday, and lists
-  whatever is found with a link to each event (see notes below). If none of
-  the three venues have anything on either day, this section is skipped
-  entirely
+  Nun's Head) plus two recurring Eventbrite event series (The Lesbian Pub
+  Quiz, Lesbian Speed Dating) for events on the coming Thursday and Friday,
+  and lists whatever is found with a link to each event (see notes below).
+  If none of the five sources have anything on either day, this section is
+  skipped entirely
 
 **Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -229,12 +230,13 @@ outcome is visible either way.
 
 ## Notes on the Sunday Thu/Fri events check
 
-- `check_wlw_events()` scrapes three separate venue websites and reports any
-  events on the coming Thursday and Friday. Each of the three scrapers
-  (`_scrape_outsavvy_organiser()`, `_scrape_old_nunshead()`) is wrapped in
-  its own try/except, so one source failing doesn't block the others - the
-  fallback "couldn't fetch, check manually" message with all three links
-  only shows up if *all three* fail.
+- `check_wlw_events()` scrapes five separate sources and reports any events
+  on the coming Thursday and Friday. Each of the five scrapers
+  (`_scrape_outsavvy_organiser()` x2, `_scrape_old_nunshead()`,
+  `_scrape_eventbrite_collection()` x2) is wrapped in its own try/except, so
+  one source failing doesn't block the others - the fallback "couldn't
+  fetch, check manually" message with all five links only shows up if *all
+  five* fail.
 - The Common Press's own "upcoming events" page
   (`commonpress.co.uk/upcoming-events-new`) is a Wix site whose events widget
   is a third-party app widget with no server-rendered event data at all - a
@@ -257,5 +259,22 @@ outcome is visible either way.
   view and a list view sharing the same markup), so `_scrape_old_nunshead()`
   de-duplicates by the event's link.
 - `check_wlw_events()` returns `None` when neither Thursday nor Friday has
-  any events across all three venues, so (like the office route check) a
+  any events across all five sources, so (like the office route check) a
   quiet week adds nothing to the briefing at all.
+- The Lesbian Pub Quiz and Lesbian Speed Dating are recurring Eventbrite
+  event series, scraped from their Eventbrite "collection" pages
+  (`eventbrite.com/cc/<slug>-<id>/`, `PUB_QUIZ_EVENTS_URL` /
+  `SPEED_DATING_EVENTS_URL`) rather than Eventbrite's generic search pages -
+  those sit behind AWS WAF bot-challenge protection and block plain
+  `requests.get()`, but these specific collection pages return a clean 200
+  with no challenge at all. Each page embeds a `@type=ItemList` block in its
+  JSON-LD with every occurrence of that series, past and upcoming, mixed
+  together with no particular sort order - each occurrence has a
+  timezone-aware `startDate` (e.g. `"2026-10-08T19:00:00+0100"`) where the
+  offset is already the correct London BST/GMT for that date, so
+  `_scrape_eventbrite_collection()` just takes `.date()` directly with no
+  further timezone conversion needed. Since `check_wlw_events()` already
+  only keeps events matching the exact target Thursday/Friday dates, past
+  occurrences are naturally filtered out without any extra "upcoming only"
+  logic. Cancelled occurrences are titled `CANCELLED: ...` by Eventbrite
+  itself and are excluded by that prefix.
