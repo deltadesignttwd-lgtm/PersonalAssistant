@@ -169,13 +169,47 @@ outcome is visible either way.
   line] -> Bank -> Bank [DLR] -> Lewisham -> home. Since it's the same two
   TfL lines (`dlr`/`northern`) as the morning check, just travelled in the
   opposite direction, it queries the same `_get_tfl_line_disruptions(['dlr',
-  'elizabeth', 'northern'])` and reuses the existing
-  `_mentions_irrelevant_office_location()` keyword filter rather than
-  duplicating it. It also returns `None` when clear, but unlike the morning
-  check (which is just one section of a larger message), a `None` here
-  means `send_evening_update()` sends no Telegram message at all for that
-  run - this was a deliberate choice (confirmed with the user) over always
-  pinging with a "clear" status.
+  'elizabeth', 'northern'])` and reuses the same relevance logic (see below)
+  rather than duplicating it. It also returns `None` when clear, but unlike
+  the morning check (which is just one section of a larger message), a
+  `None` here means `send_evening_update()` sends no Telegram message at all
+  for that run - this was a deliberate choice (confirmed with the user) over
+  always pinging with a "clear" status.
+- **2026-10-08 bug and fix - relevance logic for the office/home route
+  checks.** `_get_tfl_line_disruptions()` now returns structured
+  `{"line", "severity", "reason"}` dicts (using TfL's own
+  `statusSeverityDescription` field) instead of pre-formatted strings, so
+  callers can reason about severity and text separately.
+  `_is_office_route_disruption_relevant()` replaced the old
+  `_mentions_irrelevant_office_location()`-only filter, which had a real
+  bug: on 2026-10-08 the Northern line reported "Severe delays due to an
+  earlier signal failure at Stockwell" with no scoping - a line-wide severe
+  delay that did affect the Bank branch this route uses - but the old logic
+  silently dropped it just because "Stockwell" (a Morden/Battersea-branch
+  station) appeared in `_IRRELEVANT_OFFICE_ROUTE_KEYWORDS`, so the 17:30
+  evening ping never fired. The fix changes the default from "assume
+  irrelevant unless proven relevant" to "assume relevant unless explicitly
+  proven otherwise":
+  1. If the text names a station actually on this route
+     (`_RELEVANT_OFFICE_ROUTE_KEYWORDS` - Bank, Old Street, Moorgate,
+     Lewisham, and the DLR stations between them) it's always relevant,
+     regardless of what else the sentence mentions (handles cases like
+     "severe delays between Kennington and Bank", where Kennington alone
+     would look excludable but the scoped range still covers Bank).
+  2. Otherwise, the keyword exclusion list is only trusted when the text
+     carries an explicit scoping qualifier (`_LINE_SCOPE_QUALIFIER_RE` -
+     "between X and Y" or "GOOD SERVICE on the rest of the line"; TfL does
+     write this when a disruption is genuinely confined to one section -
+     compare the same day's Elizabeth line notice, which had this qualifier
+     and was correctly excluded).
+  3. With no scoping qualifier at all, the disruption is treated as
+     relevant by default - unlike before, this is no longer limited to
+     "Severe Delays" specifically; any non-good-service severity with no
+     qualifier now surfaces, since an unscoped "Minor Delays" is just as
+     ambiguous as an unscoped "Severe Delays".
+  Keyword matching uses `_text_mentions_any()` (word-boundary regex, not
+  plain substring `in`) so "Bank" doesn't spuriously match inside
+  "Embankment".
 - Most Citymapper links in `morning_briefing.py` are decorative/fallback links
   for the user to open manually if the TfL check itself fails - they are not
   queried programmatically (Citymapper has no public routing-*status* API).

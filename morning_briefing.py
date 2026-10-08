@@ -186,7 +186,10 @@ def get_gbp_hkd_tt_rate():
 
 
 def _get_tfl_line_disruptions(line_ids):
-    """查詢指定 TfL line id 的即時狀態，回傳「非正常服務」的說明清單（可能為空）"""
+    """查詢指定 TfL line id 的即時狀態，回傳「非正常服務」狀態的結構化清單（可能為空）。
+    每筆為 {"line": 路線名稱, "severity": statusSeverityDescription, "reason": reason 文字}。
+    severity 直接用 TfL API 本身的結構化欄位（例如 "Severe Delays"/"Minor Delays"/
+    "Part Suspended"），不用字串比對去猜測嚴重程度。"""
     ids = ",".join(line_ids)
     tfl_url = f"https://api.tfl.gov.uk/Line/{ids}/Status"
     res = requests.get(tfl_url, timeout=10)
@@ -199,7 +202,11 @@ def _get_tfl_line_disruptions(line_ids):
             status_desc = status.get('statusSeverityDescription', '')
             if status_desc.strip().lower() not in ('good service', 'normal service'):
                 reason = status.get('reason', 'Minor delays reported.')
-                disruptions.append(f"{line.get('name')}: {reason}")
+                disruptions.append({
+                    "line": line.get('name'),
+                    "severity": status_desc,
+                    "reason": reason,
+                })
     return disruptions
 
 
@@ -394,11 +401,12 @@ def _check_route_disruption_impl():
 
         relevant = []
         for d in disruptions:
-            slug = _extract_disruption_station_slug(d)
+            slug = _extract_disruption_station_slug(d["reason"])
+            formatted = f"{d['line']}: {d['reason']}"
             if slug and slug not in _RELEVANT_SOUTHEASTERN_STATION_SLUGS:
-                print(f"忽略與本路線無關的 Southeastern 通知（車站: {slug}）: {d}")
+                print(f"忽略與本路線無關的 Southeastern 通知（車站: {slug}）: {formatted}")
                 continue
-            relevant.append(d)
+            relevant.append(formatted)
 
         if not relevant:
             return "This route is clear ✅"
@@ -413,9 +421,21 @@ def _check_route_disruption_impl():
 # Stratford<->Beckton 等），Elizabeth line 則橫跨 Reading/Heathrow 到 Shenfield/Abbey
 # Wood，Northern line 更是全倫敦分支最多的地鐵線（Morden/Edgware/High Barnet/Battersea
 # 等多條分支、中央又分 Bank/Charing Cross 兩條路線）。三者都可能出現與本路線完全無關的
-# 通知（原理同 Southeastern 的 Bromley South 案例）。TfL 對自家路線（非 National Rail
-# 委外營運商）回報的 reason 通常是英文描述而非 nationalrail.co.uk 連結，因此改用關鍵字
-# 比對：只有在明確提到已知「不相關」分支/地點時才排除，無法辨識地點則保守地維持標記。
+# 通知（原理同 Southeastern 的 Bromley South 案例）。
+#
+# 2026-10-08 的真實案例：Northern line 當天回報 "Severe delays due to an earlier
+# signal failure at Stockwell."。Stockwell 在下面的排除清單裡（它在 Morden/Battersea
+# 分支上），舊邏輯只因文字提到 "Stockwell" 就把整筆通知忽略掉——但 TfL 的文字完全沒有
+# 寫出「範圍限定語句」（例如 "between X and Y" 或 "GOOD SERVICE on the rest of the
+# line"，同一天 Elizabeth line 的通知就有這種限定語句可以對照），代表這其實是全線性質
+# 的 Severe Delays，確實影響了本路線使用的 Bank 分支，導致 17:30 的下班提醒該發送卻
+# 完全沒發送。Stockwell 只是事故（訊號故障）發生的地點，不代表中斷範圍僅限於該處。
+#
+# 新邏輯（_is_office_route_disruption_relevant()）：只有在文字「明確」寫出範圍限定
+# 語句時，才進一步比對下面的排除清單去判斷是否真的不相關；完全沒有限定語句時，不管
+# 有沒有提到清單上的地點名稱，一律視為可能相關（寧可多發一次通知，也不要重演這次漏發
+# 的狀況）。這個規則對 dlr/elizabeth/northern 三條線、以及任何非 Good Service 的嚴重
+# 程度（Minor Delays 一樣適用，不只 Severe Delays）都一致套用。
 _IRRELEVANT_OFFICE_ROUTE_KEYWORDS = (
     # DLR 的其他分支，不在 Lewisham -> Canary Wharf 這段
     "woolwich arsenal", "beckton", "stratford international", "london city airport",
@@ -440,14 +460,67 @@ _IRRELEVANT_OFFICE_ROUTE_KEYWORDS = (
 )
 
 
+def _text_mentions_any(text, keywords):
+    """用 \\b 單字邊界比對而不是純子字串比對，避免像 "bank" 吃到 "embankment"
+    裡面那樣的誤判。text 必須已經是小寫，keywords 也必須已經是小寫。"""
+    return any(re.search(rf"\b{re.escape(kw)}\b", text) for kw in keywords)
+
+
 def _mentions_irrelevant_office_location(reason_text):
-    text = reason_text.lower()
-    return any(kw in text for kw in _IRRELEVANT_OFFICE_ROUTE_KEYWORDS)
+    return _text_mentions_any(reason_text.lower(), _IRRELEVANT_OFFICE_ROUTE_KEYWORDS)
+
+
+# 本路線實際會經過的車站/地點（DLR Bank<->Lewisham 分支 + Northern line 經 Bank/
+# Moorgate 往 Old Street 這段）。只要中斷通知明確提到其中之一，就一定與本路線相關——
+# 即使同一句話裡也出現了 _IRRELEVANT_OFFICE_ROUTE_KEYWORDS 裡的地名（例如
+# "severe delays between Kennington and Bank" 同時提到 Kennington 和 Bank：
+# Kennington 在排除清單裡，但這句話明確劃定的受影響區段包含 Bank，確實影響本路線，
+# 不能只因為提到 Kennington 就被排除）。
+_RELEVANT_OFFICE_ROUTE_KEYWORDS = (
+    "bank", "old street", "moorgate", "lewisham",
+    "shadwell", "limehouse", "westferry", "west india quay", "canary wharf",
+    "heron quays", "south quay", "crossharbour", "mudchute", "island gardens",
+    "cutty sark", "greenwich", "deptford bridge", "elverson road",
+)
+
+
+def _mentions_relevant_office_location(reason_text):
+    return _text_mentions_any(reason_text.lower(), _RELEVANT_OFFICE_ROUTE_KEYWORDS)
+
+
+# TfL 在把中斷範圍明確限定在某個區段時，文字裡一定會有這類限定語句，例如
+# "between Camden Town and Morden" 或 "GOOD SERVICE on the rest of the line"。
+# 單純提到一個地點名稱不代表中斷範圍僅限於該處——它可能只是事故起因的地點
+# （2026-10-08 的 Stockwell 案例），而不是中斷範圍的邊界。
+_LINE_SCOPE_QUALIFIER_RE = re.compile(
+    r"\bbetween\b.+?\band\b|good service\b.*\bthe rest of the line\b",
+    re.IGNORECASE,
+)
+
+
+def _is_office_route_disruption_relevant(reason_text):
+    """判斷一筆 dlr/elizabeth/northern 的中斷通知是否與本路線（Bank 分支）相關。
+    1. 只要明確提到本路線實際會經過的車站（_RELEVANT_OFFICE_ROUTE_KEYWORDS），
+       一律視為相關，不管句子裡還提到了什麼其他地名。
+    2. 否則，只有在文字明確寫出範圍限定語句（_LINE_SCOPE_QUALIFIER_RE）時，才
+       信任 _IRRELEVANT_OFFICE_ROUTE_KEYWORDS 去判斷「不相關」。
+    3. 完全沒有限定語句時，不管有沒有提到排除清單上的地點名稱，一律視為相關
+       （寧可多發一次通知，也不要漏掉真的有影響的中斷）。"""
+    if _mentions_relevant_office_location(reason_text):
+        return True
+    if not _LINE_SCOPE_QUALIFIER_RE.search(reason_text):
+        return True
+    return not _mentions_irrelevant_office_location(reason_text)
+
+
+def _format_office_route_disruptions(disruptions):
+    return "; ".join(f"{d['line']}: {d['severity']} - {d['reason']}" for d in disruptions)
 
 
 def check_office_route_disruption():
     """檢查平日通勤路線（Lewisham → Bank [DLR] → Old Street [Northern line]）的即時路況。
-    路線正常時回傳 None，代表晨報中完全不顯示這個區塊（使用者只想在真的有中斷時才看到）"""
+    路線正常時回傳 None，代表晨報中完全不顯示這個區塊（使用者只想在真的有中斷時才看到）。
+    相關性判斷見 _is_office_route_disruption_relevant()。"""
     try:
         # 路線由使用者提供的 Citymapper 連結解碼確認：home -> Bank (DLR) -> Old Street
         # (Northern line, 經 Moorgate)。查詢的 TfL line id 維持不變（dlr/elizabeth/northern）。
@@ -455,14 +528,14 @@ def check_office_route_disruption():
 
         relevant = []
         for d in disruptions:
-            if _mentions_irrelevant_office_location(d):
-                print(f"忽略與本路線無關的通知: {d}")
+            if not _is_office_route_disruption_relevant(d["reason"]):
+                print(f"忽略與本路線無關的通知: {d['line']}: {d['reason']}")
                 continue
             relevant.append(d)
 
         if not relevant:
             return None
-        details = "; ".join(relevant)
+        details = _format_office_route_disruptions(relevant)
         return f"the route to office is disrupted 🔴 because {details}"
     except Exception as e:
         print(f"辦公室路線檢查失敗: {e}")
@@ -475,8 +548,8 @@ def check_office_route_disruption():
 def check_home_from_office_route_disruption():
     """檢查平日下班路線（Old Street [Northern line] → Bank → Lewisham [DLR]）的即時
     路況。與 check_office_route_disruption() 方向相反，但用的是同樣兩條 TfL line
-    （dlr/northern，elizabeth 一樣不會用到），所以沿用同一套排除關鍵字清單
-    （_IRRELEVANT_OFFICE_ROUTE_KEYWORDS/_mentions_irrelevant_office_location）。
+    （dlr/northern，elizabeth 一樣不會用到），所以沿用同一套相關性判斷
+    （_is_office_route_disruption_relevant()）。
     路線正常時回傳 None，代表 17:30 的下班提醒完全不發送（使用者只想在真的有
     中斷時才收到通知）"""
     result = _check_home_from_office_route_disruption_impl()
@@ -490,14 +563,14 @@ def _check_home_from_office_route_disruption_impl():
 
         relevant = []
         for d in disruptions:
-            if _mentions_irrelevant_office_location(d):
-                print(f"忽略與本路線無關的通知: {d}")
+            if not _is_office_route_disruption_relevant(d["reason"]):
+                print(f"忽略與本路線無關的通知: {d['line']}: {d['reason']}")
                 continue
             relevant.append(d)
 
         if not relevant:
             return None
-        details = "; ".join(relevant)
+        details = _format_office_route_disruptions(relevant)
         return f"the route home is disrupted 🔴 because {details}"
     except Exception as e:
         print(f"下班路線檢查失敗: {e}")
