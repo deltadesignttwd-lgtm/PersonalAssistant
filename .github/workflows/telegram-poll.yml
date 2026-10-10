@@ -1,0 +1,44 @@
+name: Telegram Command Poll
+
+on:
+  # No internal "schedule:" trigger here on purpose - see README.md. Timing
+  # (every 1-2 minutes) is owned by an external cron-job.org job calling
+  # workflow_dispatch, same pattern as the other workflows.
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Poll Telegram for on-demand briefing requests
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          MODE: poll_commands
+        run: python morning_briefing.py
+
+      - name: Commit updated Telegram offset if changed
+        run: |
+          if ! git diff --quiet -- telegram_offset.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add telegram_offset.json
+            git commit -m "Update Telegram update offset"
+            git push
+          else
+            echo "No new Telegram messages this poll - offset unchanged, nothing to commit"
+          fi

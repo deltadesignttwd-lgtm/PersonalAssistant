@@ -892,6 +892,80 @@ def send_telegram(msg, max_attempts=3):
             time.sleep(3 * attempt)
 
 
+# 讓使用者可以主動在 Telegram 發 /briefing 跟機器人要一份晨報，而不是只能被動等
+# 07:00 的排程。GitHub Actions 的 runner 每次執行都是全新環境，不會記得「上次看到
+# 哪個 update_id」，所以用這個檔案把 offset 存回 repo（只有在真的收到新訊息時才會
+# 變動/commit，平常每次輪詢沒有新訊息的情況下完全不會產生任何 git 動作）。
+TELEGRAM_OFFSET_FILE = "telegram_offset.json"
+
+# 使用者可以發送的指令文字（大小寫、前後空白不計）。目前只支援 /briefing。
+_BRIEFING_COMMANDS = {"/briefing", "briefing"}
+
+
+def _load_telegram_offset():
+    try:
+        with open(TELEGRAM_OFFSET_FILE) as f:
+            return json.load(f).get("last_update_id", 0)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 0
+
+
+def _save_telegram_offset(update_id):
+    with open(TELEGRAM_OFFSET_FILE, "w") as f:
+        json.dump({"last_update_id": update_id}, f)
+        f.write("\n")
+
+
+def _get_telegram_updates(offset):
+    """呼叫 Telegram getUpdates，offset 設為「上次看過的 update_id + 1」。Telegram
+    看到這個 offset 就會把更早的 update 都標記為已確認，之後不會再回傳同一筆，
+    不需要我們自己額外呼叫任何「確認已讀」的 API。timeout=0 代表短輪詢（立刻回應
+    目前已有的更新，不等待新訊息進來），適合 GitHub Actions 這種跑一次就結束的
+    環境，不適合用長輪詢（會讓 job 卡著等）。"""
+    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/getUpdates"
+    res = requests.get(url, params={"offset": offset, "timeout": 0}, timeout=15)
+    res.raise_for_status()
+    data = res.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram getUpdates 回應異常: {data}")
+    return data.get("result", [])
+
+
+def poll_telegram_commands(now_local):
+    """輪詢 Telegram，檢查使用者是否主動發送 /briefing 指令；若有，立即觸發一次
+    完整晨報（跟 07:00 排程內容一樣，依照「今天」實際星期幾顯示對應區塊）。只處理
+    來自 TG_CHAT_ID 本人的訊息，其他來源（例如別人誤發訊息給這個 bot）一律忽略，
+    不會觸發任何動作也不會被當成「已處理」而推進 offset 之外的行為影響。"""
+    last_offset = _load_telegram_offset()
+    updates = _get_telegram_updates(last_offset + 1 if last_offset else 0)
+
+    if not updates:
+        print("沒有新的 Telegram 訊息")
+        return
+
+    highest_update_id = last_offset
+    triggered = False
+    for update in updates:
+        highest_update_id = max(highest_update_id, update.get("update_id", highest_update_id))
+        message = update.get("message") or {}
+        chat_id = str((message.get("chat") or {}).get("id", ""))
+        text = (message.get("text") or "").strip().lower()
+
+        if chat_id != str(TG_CHAT_ID):
+            print(f"忽略來自非本人 chat_id 的訊息: {chat_id}")
+            continue
+
+        if text in _BRIEFING_COMMANDS:
+            print(f"收到 on-demand 晨報指令: {text!r}")
+            send_full_briefing(now_local, False, False, False)
+            triggered = True
+        else:
+            print(f"收到不認識的訊息，忽略: {text!r}")
+
+    _save_telegram_offset(highest_update_id)
+    print(f"已處理到 update_id={highest_update_id}" + ("（已觸發晨報）" if triggered else ""))
+
+
 def send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
@@ -1028,6 +1102,8 @@ def main():
         send_route_only_update(now_local)
     elif mode == "evening":
         send_evening_update(now_local)
+    elif mode == "poll_commands":
+        poll_telegram_commands(now_local)
     else:
         send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check)
 

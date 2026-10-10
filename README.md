@@ -2,7 +2,9 @@
 
 Sends a daily morning briefing (Octopus Agile electricity price, Lewisham
 weather, and a commute route check) to Telegram, plus extra high-frequency
-route pings on Saturday mornings and a weekday evening commute check.
+route pings on Saturday mornings and a weekday evening commute check. Telegram
+is also a two-way channel: sending `/briefing` to the bot triggers an
+on-demand copy of the full briefing instead of waiting for the 07:00 run.
 
 ## What it sends
 
@@ -63,6 +65,16 @@ route pings on Saturday mornings and a weekday evening commute check.
 - If neither the route check nor (on Fridays) the planned-events check has
   anything to report, no message is sent at all that run.
 
+**On demand, any time** (`morning_briefing.py`, `MODE=poll_commands`,
+polled every 1-2 minutes by an external scheduler - see notes below):
+
+- Sending `/briefing` (or `briefing`, case-insensitive) from the configured
+  Telegram chat triggers the exact same full briefing as the 07:00 run -
+  all the usual day-of-week sections (Office Route Check Mon-Fri, Saturday
+  Route Check + Planned Road Events on Saturday, Upcoming Thu/Fri Events on
+  Sunday) react to whatever day it actually is when you send the command.
+  Messages from any other chat are silently ignored.
+
 ## Required repository secrets
 
 Set under **Settings -> Secrets and variables -> Actions**:
@@ -90,10 +102,10 @@ confusing duplicate message hours after the real one.
 
 ### cron-job.org jobs required
 
-All four call the GitHub Actions "create a workflow dispatch event" API:
+All five call the GitHub Actions "create a workflow dispatch event" API:
 `POST https://api.github.com/repos/deltadesignttwd-lgtm/PersonalAssistant/actions/workflows/{workflow_file}/dispatches`
 
-Common settings for all four jobs:
+Common settings for all five jobs:
 - **Method:** POST
 - **Headers:**
   - `Authorization: Bearer <PAT>` (see below)
@@ -103,6 +115,9 @@ Common settings for all four jobs:
 - **Body:** `{"ref":"main"}`
 - **Timezone:** `Europe/London` (so BST/GMT is handled automatically - no
   twice-yearly manual offset adjustment needed, unlike GitHub's UTC-only cron)
+  - except the Telegram command poll, which can just run every N minutes
+    around the clock in UTC - there's no day/time gating to get right since
+    it only ever *acts* when a `/briefing` message is actually waiting
 
 | Job | Workflow file | Schedule (Europe/London time) |
 |---|---|---|
@@ -110,6 +125,7 @@ Common settings for all four jobs:
 | Saturday ping (5 min) | `saturday-route-pings.yml` | Saturdays, 10:30-10:55, every 5 min |
 | Saturday ping (3 min) | `saturday-route-pings.yml` | Saturdays, 11:00-11:15, every 3 min |
 | Evening commute check | `evening-briefing.yml` | Weekdays (Mon-Fri), 17:30 |
+| Telegram command poll | `telegram-poll.yml` | Every day, every 1-2 minutes, all day |
 
 ### GitHub token for cron-job.org
 
@@ -121,7 +137,7 @@ you've also enabled cron-job.org's failure-notification emails.
 
 ## Manual testing
 
-All three workflows accept manual `workflow_dispatch` runs from the Actions
+All workflows accept manual `workflow_dispatch` runs from the Actions
 tab (or via the API). `morning-briefing.yml` additionally takes four inputs
 for testing outside their normal day-of-week:
 
@@ -152,6 +168,46 @@ nothing is sent to Telegram, but the Actions job log always prints both
 judgements (`check_home_from_office_route_disruption()`'s and
 `check_planned_events()`'s debug prints), so a test run's outcome is visible
 either way.
+
+`telegram-poll.yml` takes no inputs - a manual run just polls Telegram right
+now with whatever `telegram_offset.json` currently holds. Send `/briefing`
+to the bot first, then manually dispatch the workflow, to see it trigger a
+briefing without waiting for the real cron-job.org poll interval.
+
+## Notes on the Telegram on-demand briefing command
+
+- `poll_telegram_commands()` calls Telegram's `getUpdates` API with
+  `offset = last_update_id + 1`. Telegram's own semantics mean passing that
+  offset also *confirms* every update below it - there's no separate
+  "mark as read" call needed. The one piece of state that has to survive
+  between runs is `last_update_id` itself, and since every GitHub Actions
+  run starts from a brand new container, it's persisted the simplest way
+  available without adding new infrastructure: committed to
+  `telegram_offset.json` in this repo. The workflow only runs `git commit`
+  when that file actually changed (i.e. only when a new Telegram message
+  was actually waiting) - the overwhelming majority of polls see zero new
+  messages and touch git not at all.
+- Only messages whose `chat.id` matches the `TG_CHAT_ID` secret can trigger
+  anything - every other sender's message is read (so its `update_id` still
+  advances the offset, meaning it won't be looked at again) but otherwise
+  completely ignored. This matters because the bot token technically lets
+  *anyone* who discovers the bot's username message it; without this check
+  a stranger could spam `/briefing` and burn Actions minutes/API calls on
+  the account owner's behalf.
+- Recognized command text is `/briefing` or `briefing` (case-insensitive,
+  whitespace-trimmed) - anything else from the right chat is logged and
+  ignored, not treated as an error.
+- On first-ever activation, `telegram_offset.json` starts at
+  `{"last_update_id": 0}`, which makes the very first poll fetch *any*
+  already-pending update Telegram is holding for this bot. Since this bot
+  has only ever sent messages (never received any), that backlog should be
+  empty in practice - but if you'd previously sent anything to it before
+  this feature existed, the first real poll after deploying would process
+  that backlog once.
+- Short polling (`timeout=0` in the `getUpdates` call) is used instead of
+  Telegram's long-polling option, which would hold the HTTP connection open
+  waiting for a new message to arrive - the opposite of what a
+  run-once-and-exit GitHub Actions job wants.
 
 ## Notes on the route checks
 
