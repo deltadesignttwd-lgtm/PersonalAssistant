@@ -1,31 +1,51 @@
 import requests
+import json
 
-print("===== /Road/all (raw) =====")
-res = requests.get("https://api.tfl.gov.uk/Road/all", timeout=20)
-print("status:", res.status_code)
-print("body[:1000]:", res.text[:1000])
+res = requests.get("https://api.tfl.gov.uk/Road/all/Disruption", timeout=30)
+print("status:", res.status_code, "len:", len(res.text))
+data = res.json()
+print("total disruptions:", len(data))
 
-print("\n===== /Road/a406 (known real road id from TfL docs) =====")
-res = requests.get("https://api.tfl.gov.uk/Road/a406", timeout=20)
-print("status:", res.status_code)
-print("body[:500]:", res.text[:500])
+categories = sorted(set(d.get("category", "") for d in data))
+subcategories = sorted(set(d.get("subCategory", "") for d in data))
+print("\nDistinct categories:", categories)
+print("\nDistinct subCategories:", subcategories)
 
-print("\n===== /Road/a406/Disruption =====")
-res = requests.get("https://api.tfl.gov.uk/Road/a406/Disruption", timeout=20)
-print("status:", res.status_code)
-print("body[:1000]:", res.text[:1000])
+keywords = ["demonstration", "march", "procession", "protest", "parade", "rally", "ceremonial"]
+print("\n===== Entries matching event keywords =====")
+matches = []
+for d in data:
+    text = f"{d.get('comments','')} {d.get('currentUpdate','')}".lower()
+    if any(kw in text for kw in keywords):
+        matches.append(d)
 
-print("\n===== /Road/all/Disruption (all roads' disruptions) =====")
-res = requests.get("https://api.tfl.gov.uk/Road/all/Disruption", timeout=25)
-print("status:", res.status_code)
-body = res.text
-print("len:", len(body))
-print("body[:1500]:", body[:1500])
+print(f"found {len(matches)} matching entries\n")
+for d in matches[:10]:
+    print("---")
+    print("id:", d.get("id"))
+    print("category/subCategory:", d.get("category"), "/", d.get("subCategory"))
+    print("severity:", d.get("severity"), "status:", d.get("status"), "levelOfInterest:", d.get("levelOfInterest"))
+    print("corridorIds:", d.get("corridorIds"))
+    print("location:", d.get("location"))
+    print("startDateTime:", d.get("startDateTime"), "endDateTime:", d.get("endDateTime"))
+    print("comments:", d.get("comments", "")[:400])
+    print()
 
-print("\n===== searching /Road/all/Disruption for 'red route' / 'central london' mentions =====")
-if "red route" in body.lower():
-    idx = body.lower().find("red route")
-    print("FOUND 'red route' context:", body[max(0,idx-200):idx+200])
-if "central london" in body.lower():
-    idx = body.lower().find("central london")
-    print("FOUND 'central london' context:", body[max(0,idx-200):idx+200])
+# How far in the future do startDateTime values go? (for Friday-evening lookahead feasibility)
+from datetime import datetime, timezone
+now = datetime.now(timezone.utc)
+future_starts = []
+for d in data:
+    s = d.get("startDateTime")
+    if not s:
+        continue
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        continue
+    if dt > now:
+        future_starts.append((dt, d.get("id"), d.get("category"), d.get("location")))
+future_starts.sort()
+print(f"\n===== {len(future_starts)} disruptions with a FUTURE startDateTime (planned ahead) =====")
+for dt, id_, cat, loc in future_starts[:15]:
+    print(dt.isoformat(), id_, cat, loc)
