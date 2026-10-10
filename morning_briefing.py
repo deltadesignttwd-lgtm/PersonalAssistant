@@ -898,8 +898,9 @@ def send_telegram(msg, max_attempts=3):
 # 變動/commit，平常每次輪詢沒有新訊息的情況下完全不會產生任何 git 動作）。
 TELEGRAM_OFFSET_FILE = "telegram_offset.json"
 
-# 使用者可以發送的指令文字（大小寫、前後空白不計）。目前只支援 /briefing。
+# 使用者可以發送的指令文字（大小寫、前後空白不計）。
 _BRIEFING_COMMANDS = {"/briefing", "briefing"}
+_WLW_COMMANDS = {"/wlw", "wlw"}
 
 
 def _load_telegram_offset():
@@ -931,11 +932,28 @@ def _get_telegram_updates(offset):
     return data.get("result", [])
 
 
+def send_wlw_events_update(now_local):
+    """被 /wlw 指令觸發的「只要 WLW 活動區塊」版本。跟 Sunday 晨報裡的區塊共用同一個
+    check_wlw_events()，但行為上有一個關鍵差異：Sunday 晨報裡 check_wlw_events()
+    回傳 None 時整個區塊直接不出現在訊息裡（因為那是附加在其他內容後面的一個小節，
+    沒有內容就不需要特別說明）；但 /wlw 是使用者主動問的，回傳 None 時如果完全不
+    回應，使用者會以為指令沒有被處理到/壞掉了，所以這裡改成明確回傳「目前沒有符合
+    的活動」訊息，一定會有某種回覆。"""
+    wlw_events = check_wlw_events(now_local.date())
+    if wlw_events is None:
+        msg = "🎀 *Upcoming Thu/Fri Events*\n沒有找到即將到來的星期四/星期五活動。"
+    else:
+        msg = f"🎀 *Upcoming Thu/Fri Events*\n{wlw_events}"
+    send_telegram(msg)
+
+
 def poll_telegram_commands(now_local):
-    """輪詢 Telegram，檢查使用者是否主動發送 /briefing 指令；若有，立即觸發一次
-    完整晨報（跟 07:00 排程內容一樣，依照「今天」實際星期幾顯示對應區塊）。只處理
-    來自 TG_CHAT_ID 本人的訊息，其他來源（例如別人誤發訊息給這個 bot）一律忽略，
-    不會觸發任何動作也不會被當成「已處理」而推進 offset 之外的行為影響。"""
+    """輪詢 Telegram，檢查使用者是否主動發送 /briefing 或 /wlw 指令；若有，立即
+    觸發對應的回覆（/briefing 觸發跟 07:00 排程內容一樣的完整晨報，依照「今天」
+    實際星期幾顯示對應區塊；/wlw 只回傳 WLW 活動區塊，見 send_wlw_events_update()
+    說明它跟 Sunday 晨報裡那個區塊的行為差異）。只處理來自 TG_CHAT_ID 本人的訊息，
+    其他來源（例如別人誤發訊息給這個 bot）一律忽略，不會觸發任何動作也不會被當成
+    「已處理」而推進 offset 之外的行為影響。"""
     last_offset = _load_telegram_offset()
     updates = _get_telegram_updates(last_offset + 1 if last_offset else 0)
 
@@ -959,11 +977,15 @@ def poll_telegram_commands(now_local):
             print(f"收到 on-demand 晨報指令: {text!r}")
             send_full_briefing(now_local, False, False, False)
             triggered = True
+        elif text in _WLW_COMMANDS:
+            print(f"收到 on-demand WLW 活動指令: {text!r}")
+            send_wlw_events_update(now_local)
+            triggered = True
         else:
             print(f"收到不認識的訊息，忽略: {text!r}")
 
     _save_telegram_offset(highest_update_id)
-    print(f"已處理到 update_id={highest_update_id}" + ("（已觸發晨報）" if triggered else ""))
+    print(f"已處理到 update_id={highest_update_id}" + ("（已觸發指令回應）" if triggered else ""))
 
 
 def send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check):

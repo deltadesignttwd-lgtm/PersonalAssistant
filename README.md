@@ -73,7 +73,14 @@ polled every 1-2 minutes by an external scheduler - see notes below):
   all the usual day-of-week sections (Office Route Check Mon-Fri, Saturday
   Route Check + Planned Road Events on Saturday, Upcoming Thu/Fri Events on
   Sunday) react to whatever day it actually is when you send the command.
-  Messages from any other chat are silently ignored.
+- Sending `/wlw` (or `wlw`) triggers just the Upcoming Thu/Fri Events check
+  on its own, without the rest of the briefing - useful for checking
+  outside Sunday without waiting a week. Unlike the Sunday section (which
+  disappears entirely from that day's briefing when nothing is found),
+  `/wlw` always replies with something, even if that's just "no events
+  found" - a command you asked for shouldn't look like it silently failed.
+- Messages from any chat other than the configured one, or text that
+  doesn't match a recognized command, are silently ignored.
 
 ## Required repository secrets
 
@@ -194,9 +201,16 @@ briefing without waiting for the real cron-job.org poll interval.
   *anyone* who discovers the bot's username message it; without this check
   a stranger could spam `/briefing` and burn Actions minutes/API calls on
   the account owner's behalf.
-- Recognized command text is `/briefing` or `briefing` (case-insensitive,
-  whitespace-trimmed) - anything else from the right chat is logged and
-  ignored, not treated as an error.
+- Recognized command text is `/briefing`/`briefing` or `/wlw`/`wlw`
+  (case-insensitive, whitespace-trimmed) - anything else from the right
+  chat is logged and ignored, not treated as an error.
+- `/wlw` calls `send_wlw_events_update()`, which wraps the same
+  `check_wlw_events()` the Sunday briefing section uses, but replies
+  explicitly even when it returns `None` ("no events found") rather than
+  sending nothing - the Sunday section's silent-skip behavior makes sense
+  there because it's one optional piece of a larger message that still
+  has other content, but a command the user explicitly sent needs *some*
+  reply, or it looks like the bot never saw it.
 - On first-ever activation, `telegram_offset.json` starts at
   `{"last_update_id": 0}`, which makes the very first poll fetch *any*
   already-pending update Telegram is holding for this bot. Since this bot
