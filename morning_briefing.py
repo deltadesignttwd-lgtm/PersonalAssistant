@@ -39,6 +39,14 @@ CITYMAPPER_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlNt
 # 解碼確認為 CITYMAPPER_OFFICE_URL 的反方向，使用同樣兩條 TfL line（Northern/DLR）。
 CITYMAPPER_HOME_FROM_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlF1v2yAUhv%2BKxe3ihg9%2F4Nx1aqZNi9Kp2dSLqkLMkMSLAxkmS6so%2F32AnQ%2B3Wrs7n3PgfQ%2BPOexByQ0YRQgjSgcREFvDbaWVS%2BEixS4jlXDBHpRaG9G4T5CiqyRLMpoPYngFEc4pAW6h4mvpyxO5q5olX4ODS%2F4yrFJCPrkCcWEtF17iYQ9E1ViuSr8jI6TvnMFgXHZmKc6CE82LYFQp5vZ2awEcIgp9eq1F8N%2FxeuXj5ry%2FoCQoFBhlvmQ1k0%2BV9fXbWsyskdKyMfEd73sIEngiAD5yFXSXkosdf%2FbQKLzwtYarxom6lNFbK1kVcD2AqTZ2KY0Cj74ry03fOPRq9YaVeqtsByokjgLfam7n2qzZudkpEzO%2F8VTy3bXZx%2FYUZ76wTzc0fYaLCMEtXlrg13jR8D26fYGXCFF%2ByfB0N3ocCfwvjjeTuz7C4x%2Fp0UPpP%2FEFRjdMjHvkjj2xoP8SXvImPT8HRTcG7RTMjV6fLtdJekwgSelruniYvU3XGVB0nDNw8MffmKqUbCPb%2FgjyDRm56BS3q7jWSrig41epBTPy91Y21hEJsjQrUyKKeE4xjxOZ05iTMolLkeOfPCeCYAwuOO8BF8LIJgz%2FbCk37jILF0b3rttBNAl2g%2BjHV7%2Bp90yEycu70XP34%2FKZ%2BOR%2B8yq6k89K16KJrk25rKwsbRPeDVu1qzDEWYxgDMl3REYJHiXoA0QjCIfT2%2Fsvs89e8Y80TXv69PAXRWdfxg%3D%3D"
 
+# TfL 官方的 Central London Red Routes 即時路況頁面。這個頁面本身被 bot 驗證
+# (Cloudflare 一類的 WAF) 擋下，plain requests 拿到的是 403 "Verification
+# required" 頁面，無法直接 scrape；只用來當人工檢查的備用連結。
+TFL_CENTRAL_LONDON_TRAFFIC_STATUS_URL = (
+    "https://tfl.gov.uk/traffic/status/?dateTypeSelect=Now"
+    "&corridorIds=Central%20London%20Red%20Routes"
+)
+
 
 def _parse_iso(ts):
     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -772,6 +780,93 @@ def _check_wlw_events_impl(today):
     return "\n---\n---\n".join(day_sections)
 
 
+# TfL 的 Road Disruption API（/Road/all/Disruption）不需要任何 API key，回傳倫敦
+# 所有道路的即時中斷清單，其中 category 為 "Planned events" 的項目涵蓋示威/遊行
+# (Demonstration/March)、演唱會 (Concert)、拍片 (Filming)、體育賽事 (Sporting) 等
+# 計畫性道路事件，資料結構清楚（corridorIds、location、comments、起止時間），不用
+# 像 tfl.gov.uk/traffic/status 網頁那樣被 bot 驗證擋下（該網頁 plain requests 拿到
+# 的是 403 "Verification required"，無法直接 scrape，見
+# TFL_CENTRAL_LONDON_TRAFFIC_STATUS_URL）。
+#
+# 已知限制：實測這個 API 似乎只會在事件「已經開始」(startDateTime <= 查詢當下) 才會
+# 出現在清單裡——2026-10-08 查過當天示威時，全部 126 筆目前的中斷裡沒有一筆
+# startDateTime 是兩小時以上之後的「真正未來」時段。這代表這個檢查比較像是「現在路上
+# 在發生什麼」，不保證前一晚或清晨就能提早看到當天稍晚才開始的活動；但這仍然比完全沒有
+# 這個檢查好，而且不無法排除 TfL 真的會提早幾天公佈大型計畫性活動（只是目前這組樣本沒
+# 觀察到），所以還是把它接到 Friday 晚報跟 Saturday 早報，實際跑幾週後再看資料準不准。
+TFL_ROAD_DISRUPTION_API_URL = "https://api.tfl.gov.uk/Road/all/Disruption"
+
+
+def _get_planned_road_events():
+    """查詢 TfL Road Disruption API，回傳 category 為 "Planned events" 的原始
+    中斷清單（可能為空）。相關性篩選交給呼叫端（_is_planned_event_relevant()）。"""
+    res = requests.get(TFL_ROAD_DISRUPTION_API_URL, timeout=20)
+    res.raise_for_status()
+    data = res.json()
+    return [d for d in data if d.get("category") == "Planned events"]
+
+
+# Saturday gym 路線走的是 Lewisham (Southeastern) -> Charing Cross -> 步行到
+# Strand (Virgin Active Strand)。倫敦市中心的大型示威/遊行常會直接經過或封閉這些
+# 路/地標，即使活動本身不是在 Strand 上，路障/改道也常波及代替巴士的行駛路線——
+# 2026-10-10 的真實案例：示威從 Victoria Embankment 經 Westminster Bridge、York
+# Road、Waterloo Bridge、Strand 到 Trafalgar Square/Whitehall，代替巴士因此被迫
+# 中途改道。
+_RELEVANT_PLANNED_EVENT_KEYWORDS = (
+    "strand", "trafalgar square", "whitehall", "charing cross",
+    "northumberland avenue", "embankment", "waterloo bridge",
+    "westminster bridge", "aldwych", "the mall", "pall mall",
+    "cockspur street", "villiers street", "savoy",
+)
+
+
+def _is_planned_event_relevant(event):
+    text = f"{event.get('location', '')} {event.get('comments', '')}".lower()
+    return _text_mentions_any(text, _RELEVANT_PLANNED_EVENT_KEYWORDS)
+
+
+def _format_event_time(start, end):
+    try:
+        start_local = _parse_iso(start).astimezone(LOCAL_TZ).strftime("%H:%M")
+        end_local = _parse_iso(end).astimezone(LOCAL_TZ).strftime("%H:%M")
+        return f"{start_local} - {end_local}"
+    except (ValueError, AttributeError):
+        return f"{start} - {end}"
+
+
+def check_planned_events():
+    """檢查與 Saturday gym 路線（Lewisham -> Charing Cross -> 步行到 Strand）相關
+    的計畫性道路事件（示威/遊行、演唱會、拍片、體育賽事）。沒有相關事件時回傳
+    None。已知限制見 TFL_ROAD_DISRUPTION_API_URL 上方的說明。"""
+    result = _check_planned_events_impl()
+    print(f"Planned Events Check 判斷結果: {result}")
+    return result
+
+
+def _check_planned_events_impl():
+    try:
+        events = _get_planned_road_events()
+    except Exception as e:
+        print(f"Planned events 查詢失敗: {e}")
+        return (
+            "couldn't check for planned road events (demonstrations/closures). "
+            f"Check manually: [TfL Traffic Status]({TFL_CENTRAL_LONDON_TRAFFIC_STATUS_URL})"
+        )
+
+    relevant = [e for e in events if _is_planned_event_relevant(e)]
+    if not relevant:
+        return None
+
+    sections = []
+    for e in relevant:
+        sub = e.get("subCategory", "Planned event")
+        loc = e.get("location", "")
+        time_range = _format_event_time(e.get("startDateTime"), e.get("endDateTime"))
+        comment = e.get("comments", "")
+        sections.append(f"*{sub}* ({time_range})\n{loc}\n{comment}")
+    return "\n\n".join(sections)
+
+
 def send_telegram(msg, max_attempts=3):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("TG_BOT_TOKEN / TG_CHAT_ID 未設定，請確認 repository secrets。")
@@ -854,6 +949,12 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
             f"{route_status}\n\n"
             f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})\n"
         )
+        planned_events = check_planned_events()
+        if planned_events is not None:
+            briefing += (
+                f"\n🚧 *Planned Road Events Near Route*\n"
+                f"{planned_events}\n"
+            )
 
     if is_sunday or force_wlw_check:
         wlw_events = check_wlw_events(now_local.date())
@@ -878,19 +979,35 @@ def send_route_only_update(now_local):
     send_telegram(msg)
 
 
-def send_evening_update():
-    """平日 17:30 下班路線提醒。只檢查 Office → Home 的路況，路線正常時完全不發送
-    任何訊息（使用者只想在真的有中斷時才收到通知），這點與 route_only 模式（Saturday
-    高頻提醒，無論路況如何都會發送）不同。"""
+def send_evening_update(now_local):
+    """平日 17:30 下班路線提醒。核心是 Office → Home 的路況，路線正常時這部分完全
+    不產生內容（使用者只想在真的有中斷時才收到通知），這點與 route_only 模式
+    （Saturday 高頻提醒，無論路況如何都會發送）不同。
+    週五額外檢查 Saturday gym 路線附近週末計畫性道路事件（示威/演唱會等）——這是
+    提早示警，即使當下路線正常也會獨立發送，不像路線檢查那樣只在有中斷時才發。
+    兩部分都沒有內容時完全不發送任何訊息。"""
     home_route_status = check_home_from_office_route_disruption()
-    if home_route_status is None:
+    is_friday = now_local.weekday() == 4  # 4 = Friday
+
+    msg_parts = []
+    if home_route_status is not None:
+        msg_parts.append(
+            f"🏠 *Office → Home Route Check*\n"
+            f"{home_route_status}\n\n"
+            f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
+        )
+
+    if is_friday:
+        planned_events = check_planned_events()
+        if planned_events is not None:
+            msg_parts.append(
+                f"🚧 *Planned Road Events This Weekend (Saturday gym route)*\n"
+                f"{planned_events}"
+            )
+
+    if not msg_parts:
         return
-    msg = (
-        f"🏠 *Office → Home Route Check*\n"
-        f"{home_route_status}\n\n"
-        f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
-    )
-    send_telegram(msg)
+    send_telegram("\n\n".join(msg_parts))
 
 
 def main():
@@ -910,7 +1027,7 @@ def main():
     if mode == "route_only":
         send_route_only_update(now_local)
     elif mode == "evening":
-        send_evening_update()
+        send_evening_update(now_local)
     else:
         send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check)
 

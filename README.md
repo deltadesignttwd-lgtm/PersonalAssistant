@@ -34,6 +34,10 @@ route pings on Saturday mornings and a weekday evening commute check.
   closest station to Virgin Active Strand - also checks whether Lewisham
   station itself is closed for rail replacement buses, and if so reports a
   suggested alternative route from Hither Green (see notes below)
+- **Saturday only, and only if any are found:** Planned Road Events Near
+  Route - checks TfL's Road Disruption API for demonstrations/marches,
+  concerts, filming, or sporting events near the Strand/Charing Cross area
+  (see notes below). Skipped entirely if none are found
 - **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
   two queer/community event venues (La Camionera, Old Nun's Head) plus two
   recurring Eventbrite event series (The Lesbian Pub Quiz, Lesbian Speed
@@ -49,10 +53,15 @@ route pings on Saturday mornings and a weekday evening commute check.
 
 **Monday-Friday, 17:30 BST/GMT** (`morning_briefing.py`, `MODE=evening`):
 
-- Office -> Home Route Check only (Old Street [Northern line] -> Bank ->
+- Office -> Home Route Check (Old Street [Northern line] -> Bank ->
   Lewisham [DLR], the reverse of the morning Office Route Check) - and
-  **only if disrupted**. If the route is clear, no message is sent at all
-  (see notes below)
+  **only if disrupted**.
+- **Fridays only, and only if any are found:** the same Planned Road Events
+  check as the Saturday morning briefing, run a day ahead as an early
+  warning for the upcoming Saturday gym trip (see notes below for a caveat
+  on how much real lead time this gives).
+- If neither the route check nor (on Fridays) the planned-events check has
+  anything to report, no message is sent at all that run.
 
 ## Required repository secrets
 
@@ -116,8 +125,9 @@ All three workflows accept manual `workflow_dispatch` runs from the Actions
 tab (or via the API). `morning-briefing.yml` additionally takes four inputs
 for testing outside their normal day-of-week:
 
-- `force_route_check` (boolean) - include the Saturday gym route check even
-  on a non-Saturday
+- `force_route_check` (boolean) - include the Saturday gym route check (and
+  with it, the planned-events check - they're both inside the same
+  `is_saturday or force_route_check` block) even on a non-Saturday
 - `force_office_check` (boolean) - include the office route check even on a
   non-weekday
 - `force_wlw_check` (boolean) - include the Thu/Fri events check even on a
@@ -131,12 +141,17 @@ for testing outside their normal day-of-week:
   07:00 run would send, with no Saturday-only content mixed in just because
   today happens to be a Saturday. Leave blank to use the real current time.
 
-`evening-briefing.yml` takes no inputs - it has no day-of-week gating in the
-script itself (that's left entirely to when cron-job.org triggers it), so a
-manual run just checks the route right now. If the route is clear, nothing
-is sent to Telegram, but the Actions job log always prints the judgement
-(`check_home_from_office_route_disruption()`'s debug print), so a test run's
-outcome is visible either way.
+`evening-briefing.yml` takes one input, `simulated_now` (same format as
+`morning-briefing.yml`'s `simulated_now`) - the route check itself has no
+day-of-week gating in the script (that's left entirely to when cron-job.org
+triggers it), but the planned-events section only runs when "now" is a
+Friday, so this input is how to test that section on any other day. Leave
+it blank to use the real current time. If neither the route check nor (on a
+simulated or real Friday) the planned-events check has anything to report,
+nothing is sent to Telegram, but the Actions job log always prints both
+judgements (`check_home_from_office_route_disruption()`'s and
+`check_planned_events()`'s debug prints), so a test run's outcome is visible
+either way.
 
 ## Notes on the route checks
 
@@ -260,6 +275,43 @@ outcome is visible either way.
   data (legs, modes, live departure times, price) - no browser, cookies, or
   session needed. `get_hither_green_to_strand_route()` picks the first
   journey in the `SUGGESTED` section and summarises its legs.
+- **Planned Road Events check (`check_planned_events()`)**, added after a
+  real miss on 2026-10-10: a central London demonstration disrupted the
+  Saturday gym trip (the Lewisham station closure that day triggered the
+  rail-replacement-bus alternative route, but the bus itself then had to
+  improvise a diversion mid-journey because of the march) with no advance
+  warning in that morning's briefing. `tfl.gov.uk/traffic/status` (the page
+  with the `dateTypeSelect`/`corridorIds` query params) is blocked by a bot
+  challenge for plain `requests` (403 "Verification required", the same
+  WAF pattern as Eventbrite's search pages) and can't be scraped directly.
+  Instead, `_get_planned_road_events()` calls TfL's Road Disruption API
+  (`https://api.tfl.gov.uk/Road/all/Disruption`) directly - no API key
+  needed - and filters to `category == "Planned events"` (covering
+  `Demonstration/March`, `Concert`, `Filming`, `Sporting` in `subCategory`).
+  `_is_planned_event_relevant()` then keeps only entries whose `location`
+  or `comments` mention a road/landmark on or near the Saturday gym walk
+  (Strand, Trafalgar Square, Whitehall, Charing Cross, Northumberland
+  Avenue, Embankment, Waterloo/Westminster Bridge, Aldwych, etc. - see
+  `_RELEVANT_PLANNED_EVENT_KEYWORDS`), matched with the same word-boundary
+  `_text_mentions_any()` used by the office-route relevance check (so
+  "Strand" doesn't spuriously match inside an unrelated longer word).
+  Confirmed against the actual 2026-10-10 demonstration (Victoria
+  Embankment -> Whitehall via Westminster Bridge/Waterloo Bridge/Strand/
+  Trafalgar Square) - it has `category: "Planned events"`,
+  `subCategory: "Demonstration/March"`, and its `location`/`comments` match
+  several of the keywords above.
+  **Known limitation (honestly unresolved):** every one of the ~126
+  disruptions live in the feed at diagnostic time had already started
+  (`startDateTime <= now`); none were more than 2 hours in the future. This
+  API looks like a "what's happening right now" feed rather than a forward
+  calendar, so there's no proof yet that querying it Friday evening or
+  Saturday 07:00 will actually surface a Saturday-afternoon event before it
+  starts - it may only appear once already under way. It's wired into both
+  the Friday evening briefing and the Saturday morning briefing anyway
+  (better than nothing, and the real lead time it provides can only be
+  determined by watching it run for real over the following weeks), with a
+  manual-check fallback link to the (bot-walled) TfL page if the API call
+  itself fails.
 
 ## Notes on the Sunday Thu/Fri events check
 

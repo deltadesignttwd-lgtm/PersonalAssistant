@@ -4,7 +4,16 @@ on:
   # No internal "schedule:" trigger here on purpose - see README.md. Timing
   # (weekdays 17:30 London time) is owned by an external cron-job.org job
   # calling workflow_dispatch, same pattern as the other two workflows.
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      simulated_now:
+        description: >-
+          Simulate "now" as this ISO datetime (e.g. 2026-10-09T17:30:00) so
+          the Friday-only planned-events section reacts as if it were
+          actually Friday, regardless of the real day. Leave blank to use
+          the real current time.
+        required: false
+        default: ""
 
 jobs:
   send-evening-update:
@@ -26,4 +35,5 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           MODE: evening
+          SIMULATED_NOW: ${{ inputs.simulated_now }}
         run: python morning_briefing.py
