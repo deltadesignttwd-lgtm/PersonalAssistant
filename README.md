@@ -2,9 +2,10 @@
 
 Sends a daily morning briefing (Octopus Agile electricity price, Lewisham
 weather, and a commute route check) to Telegram, plus extra high-frequency
-route pings on Saturday mornings and a weekday evening commute check. Telegram
-is also a two-way channel: sending `/briefing` to the bot triggers an
-on-demand copy of the full briefing instead of waiting for the 07:00 run.
+route pings on Saturday and Sunday mornings and a weekday evening commute
+check. Telegram is also a two-way channel: sending `/briefing` to the bot
+triggers an on-demand copy of the full briefing instead of waiting for the
+07:00 run.
 
 ## What it sends
 
@@ -32,14 +33,17 @@ on-demand copy of the full briefing instead of waiting for the 07:00 run.
   below). This section is only included in the briefing when the route is
   actually disrupted (or the check itself fails) - a clear route adds
   nothing to the message at all
-- **Saturday only:** Route Check for Lewisham -> Charing Cross (Southeastern),
-  closest station to Virgin Active Strand - also checks whether Lewisham
-  station itself is closed for rail replacement buses, and if so reports a
-  suggested alternative route from Hither Green (see notes below)
+- **Saturday and Sunday:** Route Check for Lewisham -> Charing Cross
+  (Southeastern), closest station to Virgin Active Strand - also checks
+  whether Lewisham station itself is closed for rail replacement buses, and
+  if so reports a suggested alternative route from Hither Green (see notes
+  below)
 - **Saturday only, and only if any are found:** Planned Road Events Near
   Route - checks TfL's Road Disruption API for demonstrations/marches,
   concerts, filming, or sporting events near the Strand/Charing Cross area
-  (see notes below). Skipped entirely if none are found
+  (see notes below). Skipped entirely if none are found. (Sunday doesn't get
+  its own planned-events check - the Friday evening warning already covers
+  the Saturday trip, and there's no equivalent day-ahead warning for Sunday)
 - **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
   two queer/community event venues (La Camionera, Old Nun's Head) plus two
   recurring Eventbrite event series (The Lesbian Pub Quiz, Lesbian Speed
@@ -47,7 +51,7 @@ on-demand copy of the full briefing instead of waiting for the 07:00 run.
   is found with a link to each event (see notes below). If none of the four
   sources have anything on either day, this section is skipped entirely
 
-**Saturday only, high-frequency route-only pings** (`morning_briefing.py`,
+**Saturday and Sunday, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
 
 - 10:30-10:55 BST, every 5 minutes
@@ -70,9 +74,10 @@ polled every 1-2 minutes by an external scheduler - see notes below):
 
 - Sending `/briefing` (or `briefing`, case-insensitive) from the configured
   Telegram chat triggers the exact same full briefing as the 07:00 run -
-  all the usual day-of-week sections (Office Route Check Mon-Fri, Saturday
-  Route Check + Planned Road Events on Saturday, Upcoming Thu/Fri Events on
-  Sunday) react to whatever day it actually is when you send the command.
+  all the usual day-of-week sections (Office Route Check Mon-Fri, Gym Route
+  Check on Saturday/Sunday, Planned Road Events on Saturday only, Upcoming
+  Thu/Fri Events on Sunday) react to whatever day it actually is when you
+  send the command.
 - Sending `/wlw` (or `wlw`) triggers just the Upcoming Thu/Fri Events check
   on its own, without the rest of the briefing - useful for checking
   outside Sunday without waiting a week. Unlike the Sunday section (which
@@ -109,7 +114,9 @@ confusing duplicate message hours after the real one.
 
 ### cron-job.org jobs required
 
-All five call the GitHub Actions "create a workflow dispatch event" API:
+All five jobs (now covering both Saturday and Sunday via the day-of-week
+field on the two high-frequency ping jobs) call the GitHub Actions "create a
+workflow dispatch event" API:
 `POST https://api.github.com/repos/deltadesignttwd-lgtm/PersonalAssistant/actions/workflows/{workflow_file}/dispatches`
 
 Common settings for all five jobs:
@@ -129,8 +136,8 @@ Common settings for all five jobs:
 | Job | Workflow file | Schedule (Europe/London time) |
 |---|---|---|
 | Daily briefing | `morning-briefing.yml` | Every day, 07:00 |
-| Saturday ping (5 min) | `saturday-route-pings.yml` | Saturdays, 10:30-10:55, every 5 min |
-| Saturday ping (3 min) | `saturday-route-pings.yml` | Saturdays, 11:00-11:15, every 3 min |
+| Weekend ping (5 min) | `saturday-route-pings.yml` | Sat + Sun, 10:30-10:55, every 5 min |
+| Weekend ping (3 min) | `saturday-route-pings.yml` | Sat + Sun, 11:00-11:15, every 3 min |
 | Evening commute check | `evening-briefing.yml` | Weekdays (Mon-Fri), 17:30 |
 | Telegram command poll | `telegram-poll.yml` | Every day, every 1-2 minutes, all day |
 
@@ -148,21 +155,25 @@ All workflows accept manual `workflow_dispatch` runs from the Actions
 tab (or via the API). `morning-briefing.yml` additionally takes four inputs
 for testing outside their normal day-of-week:
 
-- `force_route_check` (boolean) - include the Saturday gym route check (and
-  with it, the planned-events check - they're both inside the same
-  `is_saturday or force_route_check` block) even on a non-Saturday
+- `force_route_check` (boolean) - include the gym route check, and also the
+  planned-events check (two separate `if` blocks, but both also keyed off
+  this same flag) even on a day that's neither Saturday nor Sunday. Note
+  the gym route check itself runs on Saturday *or* Sunday, but the
+  planned-events check stays Saturday-only regardless of this flag's day -
+  it only widens which day you can force it on manually
 - `force_office_check` (boolean) - include the office route check even on a
   non-weekday
 - `force_wlw_check` (boolean) - include the Thu/Fri events check even on a
   non-Sunday
 - `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
   simulate "now" as this date/time instead of the real current time, so
-  day-of-week-specific sections (office Mon-Fri, gym Saturday, events Sunday)
-  react as if it were actually that day - unlike the three `force_*` flags
-  above (which only add a section on top of whatever the real day already
-  shows), this lets you see, for example, exactly what a genuine Monday
-  07:00 run would send, with no Saturday-only content mixed in just because
-  today happens to be a Saturday. Leave blank to use the real current time.
+  day-of-week-specific sections (office Mon-Fri, gym Saturday/Sunday, events
+  Sunday) react as if it were actually that day - unlike the three `force_*`
+  flags above (which only add a section on top of whatever the real day
+  already shows), this lets you see, for example, exactly what a genuine
+  Monday 07:00 run would send, with no weekend-only content mixed in just
+  because today happens to be a Saturday. Leave blank to use the real
+  current time.
 
 `evening-briefing.yml` takes one input, `simulated_now` (same format as
 `morning-briefing.yml`'s `simulated_now`) - the route check itself has no

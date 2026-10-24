@@ -1038,13 +1038,16 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
                 f"🔗 [Route: Home → Old Street]({CITYMAPPER_OFFICE_URL})\n"
             )
 
-    if is_saturday or force_route_check:
+    if is_saturday or is_sunday or force_route_check:
         route_status = check_route_disruption()
+        day_label = "Saturday" if is_saturday else "Sunday" if is_sunday else "Weekend"
         briefing += (
-            f"\n🏋️ *Saturday Route Check (Virgin Active Strand)*\n"
+            f"\n🏋️ *{day_label} Route Check (Virgin Active Strand)*\n"
             f"{route_status}\n\n"
             f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})\n"
         )
+
+    if is_saturday or force_route_check:
         planned_events = check_planned_events()
         if planned_events is not None:
             briefing += (
@@ -1065,7 +1068,9 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
 
 
 def send_route_only_update(now_local):
-    """Saturday 10:30-11:15 高頻路線提醒，只回報路況，不含天氣/電價"""
+    """Saturday/Sunday 10:30-11:15 高頻路線提醒，只回報路況，不含天氣/電價。
+    跟 7am 的 Saturday/Sunday Route Check 一樣沒有 day-of-week 判斷，完全由
+    cron-job.org 何時呼叫這個 workflow 決定"""
     route_status = check_route_disruption()
     msg = (
         f"🕐 *Route Check ({now_local.strftime('%H:%M')})*\n"
