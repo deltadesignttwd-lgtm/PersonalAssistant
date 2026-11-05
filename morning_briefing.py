@@ -193,16 +193,30 @@ def get_gbp_hkd_tt_rate():
         return None
 
 
-def _get_tfl_line_disruptions(line_ids):
+def _get_tfl_line_disruptions(line_ids, max_attempts=3):
     """查詢指定 TfL line id 的即時狀態，回傳「非正常服務」狀態的結構化清單（可能為空）。
     每筆為 {"line": 路線名稱, "severity": statusSeverityDescription, "reason": reason 文字}。
     severity 直接用 TfL API 本身的結構化欄位（例如 "Severe Delays"/"Minor Delays"/
-    "Part Suspended"），不用字串比對去猜測嚴重程度。"""
+    "Part Suspended"），不用字串比對去猜測嚴重程度。
+    實測在 2026-11-05 17:30 的下班檢查遇到 TfL API 10 秒逾時（Read timed out），導致
+    整個下班路線檢查被判定為失敗並發出錯誤訊息。加上跟 get_hither_green_to_strand_route()
+    一樣的重試機制，讓單次逾時不會直接讓檢查失敗。"""
     ids = ",".join(line_ids)
     tfl_url = f"https://api.tfl.gov.uk/Line/{ids}/Status"
-    res = requests.get(tfl_url, timeout=10)
-    res.raise_for_status()
-    lines = res.json()
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.get(tfl_url, timeout=10)
+            res.raise_for_status()
+            lines = res.json()
+            break
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"TfL line status API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+    else:
+        raise last_error
 
     disruptions = []
     for line in lines:
