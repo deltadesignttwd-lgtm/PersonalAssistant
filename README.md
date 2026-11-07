@@ -1,7 +1,7 @@
 # PersonalAssistant
 
-Sends a daily morning briefing (Octopus Agile electricity price, Lewisham
-weather, and a commute route check) to Telegram, plus extra high-frequency
+Sends a daily morning briefing (Lewisham weather and a commute route check)
+to Telegram, plus extra high-frequency
 route pings on Saturday and Sunday mornings and a weekday evening commute
 check. Telegram is also a two-way channel: sending `/briefing` to the bot
 triggers an on-demand copy of the full briefing instead of waiting for the
@@ -11,13 +11,6 @@ triggers an on-demand copy of the full briefing instead of waiting for the
 
 **Daily, 07:00 BST/GMT** (`morning_briefing.py`, `MODE=full`):
 
-- Current Octopus Agile electricity price (region `_C`, London/Lewisham),
-  plus two things about the next 24h: the single cheapest half-hour/hour
-  slot, and every period below `OCTOPUS_CHEAP_THRESHOLD_P_PER_KWH`
-  (currently 20.0 p/kWh) - contiguous cheap slots are merged into one
-  window each (e.g. a run of cheap half-hours shows as one time range),
-  separate cheap periods are listed separately, and "None" is shown if
-  nothing in the next 24h is under the threshold
 - Lewisham weather (current temp, today's range, rain warning)
 - **Only when Bank Buy >= 10.5:** GBP/HKD TT (telegraphic transfer) exchange
   rate from Hang Seng Bank - Bank Buy/Sell rates plus the bank's
