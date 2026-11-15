@@ -178,6 +178,22 @@ NATIONALRAIL_LEWISHAM_URL = "https://www.nationalrail.co.uk/live-trains/departur
 _NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(\{.*?\})</script>')
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
+# nationalrail.co.uk 的 journey planner 頁面本身是 Next.js SPA（初次載入的 HTML 裡沒有
+# 實際班次資料，要等前端 JS 執行後才呼叫 API 取得），但實測發現它背後真正呼叫的
+# jpservices.nationalrail.co.uk/journey-planner 是一個一般公開、不需登入、也沒有任何
+# bot 驗證/Cloudflare 擋下的 JSON API：直接用 requests.post() 帶同樣的查詢參數，就能
+# 拿到跟官網一樣的即時資料（scheduled/realtime 時間、delayInMinutes、rawStatus、
+# serviceBulletins），完全不需要啟動瀏覽器。
+NATIONALRAIL_JOURNEY_API_URL = "https://jpservices.nationalrail.co.uk/journey-planner"
+NATIONALRAIL_JOURNEY_PLANNER_URL = (
+    "https://www.nationalrail.co.uk/journey-planner/?type=single&origin=LEW&destination=CHX"
+)
+
+MORNING_TRAIN_ORIGIN_CRS = "LEW"
+MORNING_TRAIN_DESTINATION_CRS = "CHX"
+MORNING_TRAIN_DEPARTURE_HOUR = 8
+MORNING_TRAIN_DEPARTURE_MINUTE = 10
+
 _NATIONALRAIL_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -490,6 +506,112 @@ def check_office_route_disruption():
         )
 
 
+def _query_nationalrail_journeys(origin_crs, destination_crs, departure_local, max_attempts=3):
+    """呼叫 jpservices.nationalrail.co.uk/journey-planner，取得指定出發時間附近的即時
+    班次清單（實測一次會回傳目標時間前後共約 10 班，不是只有剛好那一班）。
+    departure_local 需帶時區資訊（LOCAL_TZ），函式內部自己轉成 API 要求的 UTC ISO 格式。"""
+    departure_utc = departure_local.astimezone(timezone.utc)
+    payload = {
+        "origin": {"crs": origin_crs, "group": False},
+        "destination": {"crs": destination_crs, "group": False},
+        "outwardTime": {"travelTime": departure_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), "type": "DEPART"},
+        "fareRequestDetails": {"passengers": {"adult": 1, "child": 0}, "fareClass": "ANY", "railcards": []},
+        "directTrains": False,
+        "reducedTransferTime": False,
+        "onlySearchForSleeper": False,
+        "overtakenTrains": True,
+        "useAlternativeServices": False,
+        "increasedInterchange": "ZERO",
+    }
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.post(NATIONALRAIL_JOURNEY_API_URL, json=payload, timeout=15)
+            res.raise_for_status()
+            return res.json().get("outwardJourneys", [])
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"National Rail journey API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+    raise last_error
+
+
+def _find_matching_journey(journeys, departure_local):
+    """從回傳的班次清單中找出 scheduled departure 剛好等於目標時間的那一班。"""
+    target_utc = departure_local.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    for journey in journeys:
+        scheduled = journey.get("timetable", {}).get("scheduled", {}).get("departure")
+        if not scheduled:
+            continue
+        try:
+            scheduled_dt = _parse_iso(scheduled)
+        except ValueError:
+            continue
+        if scheduled_dt == target_utc:
+            return journey
+    return None
+
+
+def check_morning_train_status(now_local):
+    """檢查週一到週五 {MORNING_TRAIN_DEPARTURE_HOUR}:{MORNING_TRAIN_DEPARTURE_MINUTE}
+    這一班特定列車（Lewisham → Charing Cross, Southeastern）的即時狀態——跟
+    check_office_route_disruption() 查整條 TfL line 狀態不同，這裡直接查這一班車實際
+    的即時資料（delay、取消、相關 service bulletin）。列車正常時回傳 None，跟其他
+    平日通勤檢查一樣「沒事就不提」。"""
+    result = _check_morning_train_status_impl(now_local)
+    print(f"Morning Train Check 判斷結果: {result}")
+    return result
+
+
+def _check_morning_train_status_impl(now_local):
+    departure_local = now_local.replace(
+        hour=MORNING_TRAIN_DEPARTURE_HOUR, minute=MORNING_TRAIN_DEPARTURE_MINUTE,
+        second=0, microsecond=0,
+    )
+    try:
+        journeys = _query_nationalrail_journeys(
+            MORNING_TRAIN_ORIGIN_CRS, MORNING_TRAIN_DESTINATION_CRS, departure_local
+        )
+    except Exception as e:
+        print(f"Morning Train 查詢失敗: {e}")
+        return (
+            "couldn't check this train. Check manually: "
+            f"[National Rail]({NATIONALRAIL_JOURNEY_PLANNER_URL})"
+        )
+
+    journey = _find_matching_journey(journeys, departure_local)
+    if journey is None:
+        return (
+            "couldn't find this train in today's results. Check manually: "
+            f"[National Rail]({NATIONALRAIL_JOURNEY_PLANNER_URL})"
+        )
+
+    delay = journey.get("delayInMinutes") or 0
+    raw_status = (journey.get("rawStatus") or "").upper()
+    if delay <= 0 and raw_status in ("", "NORMAL"):
+        return None
+
+    status_bits = [f"status: {raw_status or 'unknown'}"]
+    if delay:
+        status_bits.append(f"delay: {delay} min")
+    realtime_dep = journey.get("timetable", {}).get("realtime", {}).get("departure")
+    if realtime_dep:
+        try:
+            status_bits.append(f"now expected {_parse_iso(realtime_dep).astimezone(LOCAL_TZ).strftime('%H:%M')}")
+        except ValueError:
+            pass
+
+    message = "🔴 " + ", ".join(status_bits)
+    bulletins = [
+        b.get("description", "") for b in journey.get("serviceBulletins", [])
+        if b.get("category") != "Accessibility" and b.get("description")
+    ]
+    if bulletins:
+        message += "\n" + "\n".join(bulletins)
+    return message
+
+
 def check_home_from_office_route_disruption():
     """檢查平日下班路線（Old Street [Northern line] → Bank → Lewisham [DLR]）的即時
     路況。與 check_office_route_disruption() 方向相反，但用的是同樣兩條 TfL line
@@ -754,6 +876,15 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
                 f"\n🚇 *Office Route Check*\n"
                 f"{office_status}\n"
                 f"🔗 [Route: Home → Old Street]({CITYMAPPER_OFFICE_URL})\n"
+            )
+
+        train_status = check_morning_train_status(now_local)
+        if train_status is not None:
+            departure_label = f"{MORNING_TRAIN_DEPARTURE_HOUR:02d}:{MORNING_TRAIN_DEPARTURE_MINUTE:02d}"
+            briefing += (
+                f"\n🚆 *{departure_label} Lewisham → Charing Cross*\n"
+                f"{train_status}\n"
+                f"🔗 [National Rail]({NATIONALRAIL_JOURNEY_PLANNER_URL})\n"
             )
 
     if is_saturday or is_sunday or force_route_check:
