@@ -26,6 +26,13 @@ triggers an on-demand copy of the full briefing instead of waiting for the
   below). This section is only included in the briefing when the route is
   actually disrupted (or the check itself fails) - a clear route adds
   nothing to the message at all
+- **Monday-Friday only, and only if disrupted:** 08:10 Lewisham -> Charing
+  Cross train check - a second, independent commute check alongside the
+  Office Route Check above, but at a different level of detail: instead of
+  querying overall TfL line status, it asks National Rail directly for the
+  real-time status of this one specific Southeastern service (see notes
+  below). Silent when the train is running normally; when disrupted, shows
+  its status, delay, and any revised departure time
 - **Saturday and Sunday:** Route Check for Lewisham -> Charing Cross
   (Southeastern), closest station to Virgin Active Strand - also checks
   whether Lewisham station itself is closed for rail replacement buses, and
@@ -61,9 +68,10 @@ polled every 1-2 minutes by an external scheduler - see notes below):
 
 - Sending `/briefing` (or `briefing`, case-insensitive) from the configured
   Telegram chat triggers the exact same full briefing as the 07:00 run -
-  all the usual day-of-week sections (Office Route Check Mon-Fri, Gym Route
-  Check on Saturday/Sunday, Planned Road Events on Saturday only) react to
-  whatever day it actually is when you send the command.
+  all the usual day-of-week sections (Office Route Check and 08:10 train
+  check Mon-Fri, Gym Route Check on Saturday/Sunday, Planned Road Events on
+  Saturday only) react to whatever day it actually is when you send the
+  command.
 - Messages from any chat other than the configured one, or text that
   doesn't match a recognized command, are silently ignored.
 
@@ -141,8 +149,14 @@ for testing outside their normal day-of-week:
   the gym route check itself runs on Saturday *or* Sunday, but the
   planned-events check stays Saturday-only regardless of this flag's day -
   it only widens which day you can force it on manually
-- `force_office_check` (boolean) - include the office route check even on a
-  non-weekday
+- `force_office_check` (boolean) - include the office route check, and also
+  the 08:10 Lewisham -> Charing Cross train check (both keyed off this same
+  flag), even on a non-weekday. Note the train check needs the target
+  departure to still be in the future - forcing it on a day/time where
+  08:10 has already passed gets a `400` from the National Rail API (caught
+  and shown as a "couldn't check" fallback, not a crash) rather than real
+  data; pair this with `simulated_now` set to an actual future morning to
+  test it properly
 - `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
   simulate "now" as this date/time instead of the real current time, so
   day-of-week-specific sections (office Mon-Fri, gym Saturday/Sunday) react
@@ -241,6 +255,53 @@ briefing without waiting for the real cron-job.org poll interval.
   `None` here means `send_evening_update()` sends no Telegram message at all
   for that run - this was a deliberate choice (confirmed with the user) over
   always pinging with a "clear" status.
+- **08:10 Lewisham -> Charing Cross train check
+  (`check_morning_train_status()`)**, added as a second, independent
+  weekday-morning check alongside the Office Route Check - requested
+  specifically for this one Southeastern service, at the train level rather
+  than the TfL-line level the Office Route Check uses.
+  `nationalrail.co.uk/journey-planner` (the page a URL like
+  `?type=single&origin=LEW&destination=CHX&...&leavingHour=08&leavingMin=10`
+  points at) is a Next.js SPA - the server-rendered HTML has no journey data
+  at all, it's fetched client-side after the page loads. Captured via a
+  headless browser recording real network traffic (not static scraping,
+  which only turned up marketing copy and dead-end links) that the page
+  actually calls `https://jpservices.nationalrail.co.uk/journey-planner`, a
+  plain JSON `POST` API with no key, no login, and no bot-challenge at all -
+  confirmed a vanilla `requests.post()` with the same JSON payload returns
+  identical data to what the browser receives, so no browser is needed at
+  runtime. The payload shape:
+  ```json
+  {
+    "origin": {"crs": "LEW", "group": false},
+    "destination": {"crs": "CHX", "group": false},
+    "outwardTime": {"travelTime": "2026-11-16T08:10:00Z", "type": "DEPART"},
+    "fareRequestDetails": {"passengers": {"adult": 1, "child": 0}, "fareClass": "ANY", "railcards": []},
+    "directTrains": false, "reducedTransferTime": false, "onlySearchForSleeper": false,
+    "overtakenTrains": true, "useAlternativeServices": false, "increasedInterchange": "ZERO"
+  }
+  ```
+  The response's `outwardJourneys` is a list of roughly 10 services
+  bracketing the requested time (not just the one asked for), each with
+  `timetable.scheduled`/`timetable.realtime` departure times, `rawStatus`
+  (e.g. `"NORMAL"`), `delayInMinutes`, and `serviceBulletins`.
+  `_find_matching_journey()` picks the one whose scheduled departure exactly
+  equals the requested time. `check_morning_train_status()` returns `None`
+  (section omitted entirely, same "quiet unless there's a problem"
+  philosophy as every other weekday route check) when `delayInMinutes <= 0`
+  and `rawStatus` is `"NORMAL"`/empty; otherwise it reports the status,
+  delay, and revised departure time, plus any `serviceBulletins` whose
+  `category` isn't `"Accessibility"` (lift-out-of-order type notices exist
+  on effectively every query and would otherwise show up as noise on every
+  single run). The `outwardTime` must be a genuinely future departure - a
+  same-day query for a time already in the past gets a `400 Bad Request`
+  from the API (hit this once when manually test-firing the check well
+  after 08:10 had already passed; a `simulated_now` test for an actual
+  future morning confirmed the real call working end-to-end). Network
+  failures retry 3 times with backoff, same pattern as every other external
+  call in this script; if the API is unreachable or this exact departure
+  time isn't found in the results, it falls back to a manual-check link to
+  the live journey planner rather than failing silently.
 - **2026-10-08 bug and fix - relevance logic for the office/home route
   checks.** `_get_tfl_line_disruptions()` now returns structured
   `{"line", "severity", "reason"}` dicts (using TfL's own
