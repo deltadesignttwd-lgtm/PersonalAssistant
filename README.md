@@ -37,12 +37,6 @@ triggers an on-demand copy of the full briefing instead of waiting for the
   (see notes below). Skipped entirely if none are found. (Sunday doesn't get
   its own planned-events check - the Friday evening warning already covers
   the Saturday trip, and there's no equivalent day-ahead warning for Sunday)
-- **Sunday only, and only if any are found:** Upcoming Thu/Fri Events - checks
-  two queer/community event venues (La Camionera, Old Nun's Head) plus two
-  recurring Eventbrite event series (The Lesbian Pub Quiz, Lesbian Speed
-  Dating) for events on the coming Thursday and Friday, and lists whatever
-  is found with a link to each event (see notes below). If none of the four
-  sources have anything on either day, this section is skipped entirely
 
 **Saturday and Sunday, high-frequency route-only pings** (`morning_briefing.py`,
 `MODE=route_only`, no weather/price content):
@@ -68,15 +62,8 @@ polled every 1-2 minutes by an external scheduler - see notes below):
 - Sending `/briefing` (or `briefing`, case-insensitive) from the configured
   Telegram chat triggers the exact same full briefing as the 07:00 run -
   all the usual day-of-week sections (Office Route Check Mon-Fri, Gym Route
-  Check on Saturday/Sunday, Planned Road Events on Saturday only, Upcoming
-  Thu/Fri Events on Sunday) react to whatever day it actually is when you
-  send the command.
-- Sending `/wlw` (or `wlw`) triggers just the Upcoming Thu/Fri Events check
-  on its own, without the rest of the briefing - useful for checking
-  outside Sunday without waiting a week. Unlike the Sunday section (which
-  disappears entirely from that day's briefing when nothing is found),
-  `/wlw` always replies with something, even if that's just "no events
-  found" - a command you asked for shouldn't look like it silently failed.
+  Check on Saturday/Sunday, Planned Road Events on Saturday only) react to
+  whatever day it actually is when you send the command.
 - Messages from any chat other than the configured one, or text that
   doesn't match a recognized command, are silently ignored.
 
@@ -145,7 +132,7 @@ you've also enabled cron-job.org's failure-notification emails.
 ## Manual testing
 
 All workflows accept manual `workflow_dispatch` runs from the Actions
-tab (or via the API). `morning-briefing.yml` additionally takes four inputs
+tab (or via the API). `morning-briefing.yml` additionally takes three inputs
 for testing outside their normal day-of-week:
 
 - `force_route_check` (boolean) - include the gym route check, and also the
@@ -156,17 +143,14 @@ for testing outside their normal day-of-week:
   it only widens which day you can force it on manually
 - `force_office_check` (boolean) - include the office route check even on a
   non-weekday
-- `force_wlw_check` (boolean) - include the Thu/Fri events check even on a
-  non-Sunday
 - `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
   simulate "now" as this date/time instead of the real current time, so
-  day-of-week-specific sections (office Mon-Fri, gym Saturday/Sunday, events
-  Sunday) react as if it were actually that day - unlike the three `force_*`
-  flags above (which only add a section on top of whatever the real day
-  already shows), this lets you see, for example, exactly what a genuine
-  Monday 07:00 run would send, with no weekend-only content mixed in just
-  because today happens to be a Saturday. Leave blank to use the real
-  current time.
+  day-of-week-specific sections (office Mon-Fri, gym Saturday/Sunday) react
+  as if it were actually that day - unlike the two `force_*` flags above
+  (which only add a section on top of whatever the real day already
+  shows), this lets you see, for example, exactly what a genuine Monday
+  07:00 run would send, with no weekend-only content mixed in just because
+  today happens to be a Saturday. Leave blank to use the real current time.
 
 `evening-briefing.yml` takes one input, `simulated_now` (same format as
 `morning-briefing.yml`'s `simulated_now`) - the route check itself has no
@@ -205,16 +189,9 @@ briefing without waiting for the real cron-job.org poll interval.
   *anyone* who discovers the bot's username message it; without this check
   a stranger could spam `/briefing` and burn Actions minutes/API calls on
   the account owner's behalf.
-- Recognized command text is `/briefing`/`briefing` or `/wlw`/`wlw`
-  (case-insensitive, whitespace-trimmed) - anything else from the right
-  chat is logged and ignored, not treated as an error.
-- `/wlw` calls `send_wlw_events_update()`, which wraps the same
-  `check_wlw_events()` the Sunday briefing section uses, but replies
-  explicitly even when it returns `None` ("no events found") rather than
-  sending nothing - the Sunday section's silent-skip behavior makes sense
-  there because it's one optional piece of a larger message that still
-  has other content, but a command the user explicitly sent needs *some*
-  reply, or it looks like the bot never saw it.
+- Recognized command text is `/briefing`/`briefing` (case-insensitive,
+  whitespace-trimmed) - anything else from the right chat is logged and
+  ignored, not treated as an error.
 - On first-ever activation, `telegram_offset.json` starts at
   `{"last_update_id": 0}`, which makes the very first poll fetch *any*
   already-pending update Telegram is holding for this bot. Since this bot
@@ -386,44 +363,3 @@ briefing without waiting for the real cron-job.org poll interval.
   determined by watching it run for real over the following weeks), with a
   manual-check fallback link to the (bot-walled) TfL page if the API call
   itself fails.
-
-## Notes on the Sunday Thu/Fri events check
-
-- `check_wlw_events()` scrapes four separate sources and reports any events
-  on the coming Thursday and Friday. Each of the four scrapers
-  (`_scrape_outsavvy_organiser()`, `_scrape_old_nunshead()`,
-  `_scrape_eventbrite_collection()` x2) is wrapped in its own try/except, so
-  one source failing doesn't block the others - the fallback "couldn't
-  fetch, check manually" message with all four links only shows up if *all
-  four* fail.
-- La Camionera's listing (`outsavvy.com/organiser/la-camionera`) is scraped
-  via `_scrape_outsavvy_organiser()` - each event is an `<h5>` title inside
-  an `<a href>`, with a sibling `<span class="copy">` holding a date string
-  like "Thursday 8th October 2026 (+ 1 other date)". `_parse_outsavvy_date()`
-  parses out the first (soonest) date and ignores any "+N other dates"
-  suffix.
-- Old Nun's Head's listing (`theoldnunshead.co.uk/events`, a Squarespace
-  site) has a full ISO date in each `<time class="event-date"
-  datetime="2026-10-01">`. The page does render every event twice (a grid
-  view and a list view sharing the same markup), so `_scrape_old_nunshead()`
-  de-duplicates by the event's link.
-- `check_wlw_events()` returns `None` when neither Thursday nor Friday has
-  any events across all four sources, so (like the office route check) a
-  quiet week adds nothing to the briefing at all.
-- The Lesbian Pub Quiz and Lesbian Speed Dating are recurring Eventbrite
-  event series, scraped from their Eventbrite "collection" pages
-  (`eventbrite.com/cc/<slug>-<id>/`, `PUB_QUIZ_EVENTS_URL` /
-  `SPEED_DATING_EVENTS_URL`) rather than Eventbrite's generic search pages -
-  those sit behind AWS WAF bot-challenge protection and block plain
-  `requests.get()`, but these specific collection pages return a clean 200
-  with no challenge at all. Each page embeds a `@type=ItemList` block in its
-  JSON-LD with every occurrence of that series, past and upcoming, mixed
-  together with no particular sort order - each occurrence has a
-  timezone-aware `startDate` (e.g. `"2026-10-08T19:00:00+0100"`) where the
-  offset is already the correct London BST/GMT for that date, so
-  `_scrape_eventbrite_collection()` just takes `.date()` directly with no
-  further timezone conversion needed. Since `check_wlw_events()` already
-  only keeps events matching the exact target Thursday/Friday dates, past
-  occurrences are naturally filtered out without any extra "upcoming only"
-  logic. Cancelled occurrences are titled `CANCELLED: ...` by Eventbrite
-  itself and are excluded by that prefix.

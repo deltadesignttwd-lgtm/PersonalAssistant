@@ -3,7 +3,6 @@ import os
 import re
 import time
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -526,198 +525,6 @@ def _check_home_from_office_route_disruption_impl():
         )
 
 
-# 每週日檢查這些場地/活動系列的「即將到來的星期四/星期五」活動。La Camionera 自己的
-# OutSavvy organiser 清單頁（純 HTML，可直接 requests 抓取）就有完整活動清單。
-_WLW_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    )
-}
-
-LA_CAMIONERA_EVENTS_URL = "https://www.outsavvy.com/organiser/la-camionera"
-OLD_NUNSHEAD_EVENTS_URL = "https://www.theoldnunshead.co.uk/events"
-PUB_QUIZ_EVENTS_URL = "https://www.eventbrite.com/cc/the-lesbian-pub-quiz-3867043/"
-SPEED_DATING_EVENTS_URL = "https://www.eventbrite.com/cc/lesbian-speed-dating-3678189/"
-
-
-def _parse_outsavvy_date(date_text):
-    """解析 OutSavvy organiser 頁面的日期文字，例如
-    'Thursday 8th October 2026 (+ 1 other date)' -> date(2026, 10, 8)。
-    只取第一個（最近的）日期，'(+ N other dates)' 的部分忽略不處理。"""
-    match = re.search(r"(\d{1,2})\w*\s+([A-Za-z]+)\s+(\d{4})", date_text)
-    if not match:
-        return None
-    day, month_name, year = match.groups()
-    try:
-        return datetime.strptime(f"{day} {month_name} {year}", "%d %B %Y").date()
-    except ValueError:
-        return None
-
-
-def _scrape_outsavvy_organiser(venue_name, url):
-    """OutSavvy organiser 頁面把每個活動列成 <h5>標題</h5>，包在 <a href> 裡，
-    同一個 <a> 底下有個 <span class="copy"> 顯示日期文字"""
-    res = requests.get(url, headers=_WLW_HEADERS, timeout=20)
-    res.raise_for_status()
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    events = []
-    for h5 in soup.find_all("h5"):
-        title = h5.get_text(strip=True)
-        if not title:
-            continue
-        anchor = h5.find_parent("a")
-        if not anchor:
-            continue
-        time_span = anchor.find("span", class_="copy")
-        if not time_span:
-            continue
-        event_date = _parse_outsavvy_date(time_span.get_text(strip=True))
-        if event_date is None:
-            continue
-        events.append((venue_name, title, event_date, anchor.get("href")))
-    return events
-
-
-def _scrape_old_nunshead():
-    """Old Nun's Head 的 Squarespace 活動頁在每個 <article> 裡都有完整的 ISO 日期
-    （<time class="event-date" datetime="2026-10-01">），但頁面會把同一個活動重複
-    輸出兩次（grid/list 兩種版面），因此用連結網址去重。"""
-    res = requests.get(OLD_NUNSHEAD_EVENTS_URL, headers=_WLW_HEADERS, timeout=20)
-    res.raise_for_status()
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    events = []
-    seen_hrefs = set()
-    for article in soup.find_all("article"):
-        link = article.find("a", class_="eventlist-title-link")
-        time_el = article.find("time", class_="event-date")
-        if not link or not time_el or not time_el.get("datetime"):
-            continue
-
-        href = link.get("href")
-        if not href or href in seen_hrefs:
-            continue
-
-        try:
-            event_date = datetime.strptime(time_el["datetime"], "%Y-%m-%d").date()
-        except ValueError:
-            continue
-
-        seen_hrefs.add(href)
-        full_url = href if href.startswith("http") else f"https://www.theoldnunshead.co.uk{href}"
-        events.append(("Old Nun's Head", link.get_text(strip=True), event_date, full_url))
-    return events
-
-
-# Eventbrite 的 collection（/cc/<slug>-<id>/）頁面是這個系列活動的「所有場次」清單，
-# 跟一般搜尋頁（eventbrite.co.uk/d/...，會被 AWS WAF 擋下）不同，這種頁面實測是
-# 乾淨的 200、沒有 bot 驗證。頁面的 JSON-LD 裡有一個 @type=ItemList，
-# itemListElement 裡列出這個系列「過去辦過」與「尚未到來」的所有場次（混在一起、
-# 沒有排序），每個場次有帶時區 offset 的 startDate（例如
-# "2026-10-08T19:00:00+0100"），offset 已經是倫敦當地時間的正確 BST/GMT，所以
-# 直接 .date() 就是正確的本地日期，不需要再轉時區。因為後面 check_wlw_events()
-# 本來就只挑出剛好等於目標星期四/五日期的場次，過去辦過的場次自然不會命中，
-# 不需要額外篩選「只要未來」的邏輯。
-def _scrape_eventbrite_collection(series_name, url):
-    """已取消的場次標題會以 'CANCELLED' 開頭（Eventbrite 自己加的），直接排除。"""
-    res = requests.get(url, headers=_WLW_HEADERS, timeout=20)
-    res.raise_for_status()
-
-    item_list = None
-    for block in re.findall(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', res.text, re.DOTALL):
-        try:
-            parsed = json.loads(block)
-        except json.JSONDecodeError:
-            continue
-        if parsed.get("@type") == "ItemList":
-            item_list = parsed
-            break
-    if item_list is None:
-        raise RuntimeError("在頁面中找不到 ItemList JSON-LD")
-
-    events = []
-    for item in item_list.get("itemListElement", []):
-        event = (item or {}).get("item") or {}
-        title = event.get("name") or ""
-        if title.upper().startswith("CANCELLED"):
-            continue
-        start = event.get("startDate")
-        href = event.get("url")
-        if not start or not href:
-            continue
-        try:
-            event_date = datetime.fromisoformat(start).date()
-        except ValueError:
-            continue
-        events.append((series_name, title, event_date, href))
-    return events
-
-
-def check_wlw_events(reference_date):
-    """檢查這些場地/活動系列（La Camionera、Old Nun's Head、The Lesbian Pub Quiz、
-    Lesbian Speed Dating）在
-    「即將到來的星期四」與「即將到來的星期五」有哪些活動。
-    「即將到來」是相對於 reference_date 算的（晨報呼叫時傳入 now_local.date()），
-    這樣 SIMULATED_NOW 測試才能正確模擬「某天跑出來的結果」，而不是永遠用真實的
-    系統現在時間去算。沒有任何活動時回傳 None（晨報中完全不顯示這個區塊）；
-    只要有任何一個來源抓取成功就以該來源結果為準，只有在四個來源「全部」失敗時
-    才回傳備用訊息。"""
-    result = _check_wlw_events_impl(reference_date)
-    print(f"WLW Events Check 判斷結果: {result}")
-    return result
-
-
-def _check_wlw_events_impl(today):
-    thursday = today + timedelta(days=(3 - today.weekday()) % 7)
-    friday = today + timedelta(days=(4 - today.weekday()) % 7)
-
-    scrapers = [
-        lambda: _scrape_outsavvy_organiser("La Camionera", LA_CAMIONERA_EVENTS_URL),
-        _scrape_old_nunshead,
-        lambda: _scrape_eventbrite_collection("The Lesbian Pub Quiz", PUB_QUIZ_EVENTS_URL),
-        lambda: _scrape_eventbrite_collection("Lesbian Speed Dating", SPEED_DATING_EVENTS_URL),
-    ]
-
-    all_events = []
-    failures = 0
-    for scraper in scrapers:
-        try:
-            found = scraper()
-            print(f"WLW 來源抓到 {len(found)} 個活動")
-            all_events.extend(found)
-        except Exception as e:
-            failures += 1
-            print(f"WLW 活動來源抓取失敗: {e}")
-
-    if failures == len(scrapers):
-        return (
-            "Couldn't fetch this week's events. Check manually: "
-            f"[La Camionera]({LA_CAMIONERA_EVENTS_URL}) | "
-            f"[Old Nun's Head]({OLD_NUNSHEAD_EVENTS_URL}) | "
-            f"[The Lesbian Pub Quiz]({PUB_QUIZ_EVENTS_URL}) | "
-            f"[Lesbian Speed Dating]({SPEED_DATING_EVENTS_URL})"
-        )
-
-    matches = [e for e in all_events if e[2] in (thursday, friday)]
-    if not matches:
-        return None
-
-    # 每個有活動的日子自成一段，段落之間用兩行 "---" 分隔（只有兩天都有活動時才會
-    # 出現分隔線；只有一天有活動就只有一段，沒有分隔線）。
-    day_sections = []
-    for day_date, day_name in ((thursday, "Thursday"), (friday, "Friday")):
-        day_matches = sorted(e for e in matches if e[2] == day_date)
-        if not day_matches:
-            continue
-        section_lines = [f"*{day_name} {day_date.strftime('%-d %B')}*"]
-        for venue, title, _, href in day_matches:
-            section_lines.append(f"[{title}]({href}) — {venue}")
-        day_sections.append("\n".join(section_lines))
-    return "\n---\n---\n".join(day_sections)
-
-
 # TfL 的 Road Disruption API（/Road/all/Disruption）不需要任何 API key，回傳倫敦
 # 所有道路的即時中斷清單，其中 category 為 "Planned events" 的項目涵蓋示威/遊行
 # (Demonstration/March)、演唱會 (Concert)、拍片 (Filming)、體育賽事 (Sporting) 等
@@ -838,7 +645,6 @@ TELEGRAM_OFFSET_FILE = "telegram_offset.json"
 
 # 使用者可以發送的指令文字（大小寫、前後空白不計）。
 _BRIEFING_COMMANDS = {"/briefing", "briefing"}
-_WLW_COMMANDS = {"/wlw", "wlw"}
 
 
 def _load_telegram_offset():
@@ -870,28 +676,11 @@ def _get_telegram_updates(offset):
     return data.get("result", [])
 
 
-def send_wlw_events_update(now_local):
-    """被 /wlw 指令觸發的「只要 WLW 活動區塊」版本。跟 Sunday 晨報裡的區塊共用同一個
-    check_wlw_events()，但行為上有一個關鍵差異：Sunday 晨報裡 check_wlw_events()
-    回傳 None 時整個區塊直接不出現在訊息裡（因為那是附加在其他內容後面的一個小節，
-    沒有內容就不需要特別說明）；但 /wlw 是使用者主動問的，回傳 None 時如果完全不
-    回應，使用者會以為指令沒有被處理到/壞掉了，所以這裡改成明確回傳「目前沒有符合
-    的活動」訊息，一定會有某種回覆。"""
-    wlw_events = check_wlw_events(now_local.date())
-    if wlw_events is None:
-        msg = "🎀 *Upcoming Thu/Fri Events*\n沒有找到即將到來的星期四/星期五活動。"
-    else:
-        msg = f"🎀 *Upcoming Thu/Fri Events*\n{wlw_events}"
-    send_telegram(msg)
-
-
 def poll_telegram_commands(now_local):
-    """輪詢 Telegram，檢查使用者是否主動發送 /briefing 或 /wlw 指令；若有，立即
-    觸發對應的回覆（/briefing 觸發跟 07:00 排程內容一樣的完整晨報，依照「今天」
-    實際星期幾顯示對應區塊；/wlw 只回傳 WLW 活動區塊，見 send_wlw_events_update()
-    說明它跟 Sunday 晨報裡那個區塊的行為差異）。只處理來自 TG_CHAT_ID 本人的訊息，
-    其他來源（例如別人誤發訊息給這個 bot）一律忽略，不會觸發任何動作也不會被當成
-    「已處理」而推進 offset 之外的行為影響。"""
+    """輪詢 Telegram，檢查使用者是否主動發送 /briefing 指令；若有，立即觸發跟
+    07:00 排程內容一樣的完整晨報回覆，依照「今天」實際星期幾顯示對應區塊。只處理
+    來自 TG_CHAT_ID 本人的訊息，其他來源（例如別人誤發訊息給這個 bot）一律忽略，
+    不會觸發任何動作也不會被當成「已處理」而推進 offset 之外的行為影響。"""
     last_offset = _load_telegram_offset()
     updates = _get_telegram_updates(last_offset + 1 if last_offset else 0)
 
@@ -913,11 +702,7 @@ def poll_telegram_commands(now_local):
 
         if text in _BRIEFING_COMMANDS:
             print(f"收到 on-demand 晨報指令: {text!r}")
-            send_full_briefing(now_local, False, False, False)
-            triggered = True
-        elif text in _WLW_COMMANDS:
-            print(f"收到 on-demand WLW 活動指令: {text!r}")
-            send_wlw_events_update(now_local)
+            send_full_briefing(now_local, False, False)
             triggered = True
         else:
             print(f"收到不認識的訊息，忽略: {text!r}")
@@ -926,7 +711,7 @@ def poll_telegram_commands(now_local):
     print(f"已處理到 update_id={highest_update_id}" + ("（已觸發指令回應）" if triggered else ""))
 
 
-def send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check):
+def send_full_briefing(now_local, force_route_check, force_office_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
     is_saturday = now_local.weekday() == 5  # 5 = Saturday
     is_sunday = now_local.weekday() == 6  # 6 = Sunday
@@ -986,14 +771,6 @@ def send_full_briefing(now_local, force_route_check, force_office_check, force_w
             briefing += (
                 f"\n🚧 *Planned Road Events Near Route*\n"
                 f"{planned_events}\n"
-            )
-
-    if is_sunday or force_wlw_check:
-        wlw_events = check_wlw_events(now_local.date())
-        if wlw_events is not None:
-            briefing += (
-                f"\n🎀 *Upcoming Thu/Fri Events*\n"
-                f"{wlw_events}\n"
             )
 
     briefing += "\n祝你有美好的一天！💪"
@@ -1056,7 +833,6 @@ def main():
     mode = os.environ.get("MODE", "full").strip().lower()
     force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
     force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"
-    force_wlw_check = os.environ.get("FORCE_WLW_CHECK", "").lower() == "true"
 
     if mode == "route_only":
         send_route_only_update(now_local)
@@ -1065,7 +841,7 @@ def main():
     elif mode == "poll_commands":
         poll_telegram_commands(now_local)
     else:
-        send_full_briefing(now_local, force_route_check, force_office_check, force_wlw_check)
+        send_full_briefing(now_local, force_route_check, force_office_check)
 
 
 if __name__ == "__main__":
