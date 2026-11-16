@@ -589,7 +589,12 @@ def _check_morning_train_status_impl(now_local):
 
     delay = journey.get("delayInMinutes") or 0
     raw_status = (journey.get("rawStatus") or "").upper()
-    if delay <= 0 and raw_status in ("", "NORMAL"):
+    # 2026-11-16 bug: rawStatus 的「正常」值不是只有 "NORMAL" 一種（例如這天看到的是
+    # "ONTIME"，delay 仍是 0），用允許清單去猜「正常」的字串會漏掉沒見過的正常值，
+    # 跟 2026-10-08 Stockwell 那次誤判同一種錯誤。改成只信任真正可靠的訊號：
+    # delayInMinutes 本身，加上明確的取消關鍵字（取消有時 delayInMinutes 會是 0）。
+    is_disrupted = delay > 0 or "CANCEL" in raw_status
+    if not is_disrupted:
         return None
 
     status_bits = [f"status: {raw_status or 'unknown'}"]
