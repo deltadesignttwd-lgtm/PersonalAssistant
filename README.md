@@ -11,7 +11,9 @@ triggers an on-demand copy of the full briefing instead of waiting for the
 
 **Daily, 07:00 BST/GMT** (`morning_briefing.py`, `MODE=full`):
 
-- Lewisham weather (current temp, today's range, rain warning)
+- Lewisham weather (current temp, today's range, rain warning) - primary
+  source is Open-Meteo, with an automatic fallback to MET Norway if
+  Open-Meteo is unreachable after retries (see notes below)
 - **Only when Bank Buy >= 10.5:** GBP/HKD TT (telegraphic transfer) exchange
   rate from Hang Seng Bank - Bank Buy/Sell rates plus the bank's
   last-updated timestamp (see note below). Below that threshold, this
@@ -182,6 +184,36 @@ either way.
 now with whatever `telegram_offset.json` currently holds. Send `/briefing`
 to the bot first, then manually dispatch the workflow, to see it trigger a
 briefing without waiting for the real cron-job.org poll interval.
+
+## Notes on the weather check and its fallback source
+
+- `get_weather_forecast()` tries Open-Meteo first
+  (`_get_weather_forecast_open_meteo()`, 3 attempts with backoff, same
+  pattern as every other external call in this script). Open-Meteo timed
+  out on **all 3** attempts twice within 3 days (2026-11-15 and
+  2026-11-17), each time for roughly 40 seconds straight - a real
+  outage/slowdown on their end during that window, not a single transient
+  blip that a bigger retry budget would have fixed. Resolving that
+  permanently needed an independent second source rather than just more
+  retries.
+- On total Open-Meteo failure, it falls back to MET Norway's
+  Locationforecast API (`_get_weather_forecast_metno()`,
+  `api.met.no/weatherapi/locationforecast/2.0/compact`) - also free, no
+  API key, covers Lewisham fine, but their terms require a descriptive
+  `User-Agent` identifying the calling app (not a bot-check, just their
+  usage policy).
+- MET Norway's compact endpoint doesn't reliably expose a rain
+  *probability* percentage the way Open-Meteo's `precipitation_probability`
+  does (`probability_of_precipitation` was absent entirely in a live test
+  response), so the fallback's rain line is built from
+  `next_1_hours.details.precipitation_amount` (mm) instead - the largest
+  single-hour amount forecast in the next 24h, against a fixed mm
+  threshold. Its wording is explicitly labelled "備援資料來源" (backup data
+  source) so a fallback-sourced forecast never looks identical to a normal
+  Open-Meteo one.
+- Both sources failing still returns the original `"N/A"`/`"擷取失敗"`
+  fallback rather than raising - the weather section degrades, it never
+  breaks the rest of the briefing.
 
 ## Notes on the Telegram on-demand briefing command
 

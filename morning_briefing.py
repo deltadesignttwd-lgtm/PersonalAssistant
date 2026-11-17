@@ -51,8 +51,10 @@ def _parse_iso(ts):
     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
 
 
-def get_weather_forecast(max_attempts=3):
-    """透過 Open-Meteo API 取得 Lewisham 天氣預報，暫時性錯誤（如 503）會重試"""
+def _get_weather_forecast_open_meteo(max_attempts=3):
+    """透過 Open-Meteo API 取得 Lewisham 天氣預報（主要來源），暫時性錯誤（如 503/
+    逾時）會重試。重試後仍失敗則直接 raise，交給 get_weather_forecast() 改用備援
+    來源，而不是在這裡就回傳 N/A。"""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m&hourly=temperature_2m,precipitation_probability&forecast_days=1&timezone=Europe%2FLondon"
     last_error = None
     for attempt in range(1, max_attempts + 1):
@@ -78,7 +80,7 @@ def get_weather_forecast(max_attempts=3):
 
             return f"{curr_temp}°C", f"{min_temp}°C ~ {max_temp}°C", rain_summary
         except requests.exceptions.RequestException as e:
-            # 網路/HTTP 錯誤（例如今天實際發生的 503）視為暫時性，重試
+            # 網路/HTTP 錯誤（例如 503 或逾時）視為暫時性，重試
             last_error = e
             print(f"Weather API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
             if attempt < max_attempts:
@@ -88,8 +90,92 @@ def get_weather_forecast(max_attempts=3):
             last_error = e
             break
 
-    print(f"Weather API 最終失敗: {last_error}")
-    return "N/A", "N/A", "擷取失敗"
+    raise last_error
+
+
+# MET Norway（挪威氣象局）的 Locationforecast API 作為 Open-Meteo 的備援來源：全球
+# 範圍（含 Lewisham）、免費、不需要 API key，但依官方使用條款必須帶上能辨識來源應用
+# 的 User-Agent（不是驗證/擋爬蟲用途，純粹是他們的規範）。這組資料沒有像 Open-Meteo
+# 一樣的「降雨機率」百分比欄位（實測 probability_of_precipitation 經常缺漏），因此
+# 改用 next_1_hours.details.precipitation_amount（未來 24h 內任一小時的最大降雨量，
+# 單位 mm）搭配固定門檻來判斷，標註「備援資料來源」避免跟主要來源的措辭混淆。
+METNO_FORECAST_API_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+_METNO_HEADERS = {
+    "User-Agent": "PersonalAssistant (github.com/deltadesignttwd-lgtm/PersonalAssistant)",
+}
+
+
+def _get_weather_forecast_metno(max_attempts=3):
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.get(
+                METNO_FORECAST_API_URL, params={"lat": LAT, "lon": LON},
+                headers=_METNO_HEADERS, timeout=10,
+            )
+            res.raise_for_status()
+            data = res.json()
+            break
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"MET Norway weather API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+    else:
+        raise last_error
+
+    timeseries = data.get("properties", {}).get("timeseries", [])
+    if not timeseries:
+        raise RuntimeError("MET Norway 回應中沒有 timeseries 資料")
+
+    now = datetime.now(timezone.utc)
+    window_end = now + timedelta(hours=24)
+
+    curr_temp = None
+    temps = []
+    max_precip_mm = 0.0
+    for entry in timeseries:
+        entry_time = _parse_iso(entry["time"])
+        if entry_time > window_end:
+            continue
+        details = entry.get("data", {}).get("instant", {}).get("details", {})
+        if "air_temperature" in details:
+            temps.append(details["air_temperature"])
+            if curr_temp is None:
+                curr_temp = details["air_temperature"]
+        next_hour_details = entry.get("data", {}).get("next_1_hours", {}).get("details", {})
+        if "precipitation_amount" in next_hour_details:
+            max_precip_mm = max(max_precip_mm, next_hour_details["precipitation_amount"])
+
+    if curr_temp is None or not temps:
+        raise RuntimeError("MET Norway 回應中找不到溫度資料")
+
+    if max_precip_mm >= 1.0:
+        rain_summary = f"⚠️ 今天可能有降雨（備援資料來源，預估單小時最大降雨量 {max_precip_mm:.1f}mm）！記得帶傘 🌧️"
+    elif max_precip_mm > 0:
+        rain_summary = f"🌦️ 可能有局部短暫雨（備援資料來源，預估單小時最大降雨量 {max_precip_mm:.1f}mm）。"
+    else:
+        rain_summary = "☀️ 今天預計無明顯降雨（備援資料來源）。"
+
+    return f"{round(curr_temp)}°C", f"{round(min(temps))}°C ~ {round(max(temps))}°C", rain_summary
+
+
+def get_weather_forecast():
+    """取得 Lewisham 天氣預報：主要來源 Open-Meteo，重試 3 次後仍失敗則改用
+    MET Norway 作為備援（兩者都免費、不需要 API key）。2026-11-15 跟 2026-11-17
+    都遇到 Open-Meteo 連續 3 次、每次 10 秒逾時仍失敗的情況 —— 不是單次偶發的
+    網路問題，而是那段時間 Open-Meteo 本身真的連不上/太慢，單靠加重試次數並不會
+    解決，所以改成有獨立備援來源。兩個來源都失敗才回傳 N/A/擷取失敗。"""
+    try:
+        return _get_weather_forecast_open_meteo()
+    except Exception as e:
+        print(f"Open-Meteo 天氣查詢最終失敗，改用備援來源 MET Norway: {e}")
+
+    try:
+        return _get_weather_forecast_metno()
+    except Exception as e:
+        print(f"MET Norway 備援天氣查詢也失敗: {e}")
+        return "N/A", "N/A", "擷取失敗"
 
 
 def get_gbp_hkd_tt_rate():
