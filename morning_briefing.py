@@ -229,6 +229,107 @@ def _get_tfl_line_disruptions(line_ids, max_attempts=3):
     return disruptions
 
 
+# 原本想監控官方的 tfl.gov.uk/status-updates/strikes 頁面，但該頁面被 Cloudflare
+# Turnstile 互動式驗證完全擋死——plain requests 直接拿到 403，連真的 headless 瀏覽器
+# 都卡在「Verification required」驗證頁面逾時，無法繞過（跟其他頁面遇到的「純 JS
+# 運算挑戰」不同，這是真的需要人互動的驗證）。改成直接查 api.tfl.gov.uk（這個
+# subdomain 沒有被同一套 WAF 擋），用 /Line/Mode/{modes}/Status（而不是像
+# _get_tfl_line_disruptions() 那樣查特定 line id，因為罷工可能影響任何一條線，不只
+# office 通勤用到的那幾條），篩選出 reason/disruption 文字裡提到 "strike"/
+# "industrial action" 的項目。
+# 已知限制（目前無法驗證，誠實記錄）：寫這段程式的當下沒有真的在排的罷工，所以沒辦法
+# 實測 TfL 到底會提前幾天把罷工資訊放進這個 API——有可能跟 Road Disruption API
+# 一樣只在「已經開始」才會出現，而不是真的提前一天就能看到。只能等下次真的有罷工公告
+# 時，看實際跑出來的結果才能確定。
+TFL_STRIKE_CHECK_MODES = "tube,dlr,overground,elizabeth-line,tram"
+_STRIKE_KEYWORDS = ("strike", "industrial action")
+
+
+def _get_strike_disruptions(modes=TFL_STRIKE_CHECK_MODES, max_attempts=3):
+    """查詢 TfL Line Status API（依 mode，涵蓋 tube/DLR/Overground/Elizabeth line/
+    Tram 全部路線），回傳 reason/disruption 文字中提到罷工關鍵字的項目（可能為空）。
+    每筆為 {"line", "reason", "validity_periods"}，validity_periods 是 TfL 原始的
+    disruption.validityPeriods（可能為空清單——不保證每次都有結構化日期）。"""
+    url = f"https://api.tfl.gov.uk/Line/Mode/{modes}/Status?detail=true"
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.get(url, timeout=15)
+            res.raise_for_status()
+            lines = res.json()
+            break
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"TfL strike check API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+    else:
+        raise last_error
+
+    strikes = []
+    for line in lines:
+        for status in line.get("lineStatuses", []):
+            reason = status.get("reason") or ""
+            disruption = status.get("disruption") or {}
+            description = disruption.get("description") or ""
+            additional_info = disruption.get("additionalInfo") or ""
+            combined = f"{reason} {description} {additional_info}".lower()
+            if _text_mentions_any(combined, _STRIKE_KEYWORDS):
+                strikes.append({
+                    "line": line.get("name"),
+                    "reason": reason or description or additional_info,
+                    "validity_periods": disruption.get("validityPeriods") or [],
+                })
+    return strikes
+
+
+def _strike_covers_date(validity_periods, target_date):
+    for period in validity_periods:
+        from_str = period.get("fromDate")
+        to_str = period.get("toDate")
+        if not from_str or not to_str:
+            continue
+        try:
+            from_date = _parse_iso(from_str).astimezone(LOCAL_TZ).date()
+            to_date = _parse_iso(to_str).astimezone(LOCAL_TZ).date()
+        except ValueError:
+            continue
+        if from_date <= target_date <= to_date:
+            return True
+    return False
+
+
+def check_tube_strikes(now_local):
+    """檢查明天是否有地鐵/DLR/Overground/Elizabeth line/Tram 的罷工。沒有時回傳
+    None（跟其他檢查一樣「沒事就不提」）。查詢失敗時也回傳 None 而不是錯誤訊息——
+    這是額外的安全提醒，查不到就等下一次排程再試，不值得為了這個額外發一則「查詢
+    失敗」的訊息。"""
+    result = _check_tube_strikes_impl(now_local)
+    print(f"Strike Check 判斷結果: {result}")
+    return result
+
+
+def _check_tube_strikes_impl(now_local):
+    tomorrow = now_local.date() + timedelta(days=1)
+    try:
+        strikes = _get_strike_disruptions()
+    except Exception as e:
+        print(f"罷工檢查失敗: {e}")
+        return None
+
+    relevant = []
+    for s in strikes:
+        periods = s["validity_periods"]
+        # 沒有結構化日期時保守地視為相關（寧可多提醒一次，也不要漏掉真正的罷工——
+        # 這跟其他檢查「查不到就不提」的預設不同，因為這是安全性較高的提醒）。
+        if not periods or _strike_covers_date(periods, tomorrow):
+            relevant.append(s)
+
+    if not relevant:
+        return None
+    return "\n\n".join(f"{s['line']}: {s['reason']}" for s in relevant)
+
+
 # nationalrail.co.uk 的 journey planner 頁面本身是 Next.js SPA（初次載入的 HTML 裡沒有
 # 實際班次資料，要等前端 JS 執行後才呼叫 API 取得），但實測發現它背後真正呼叫的
 # jpservices.nationalrail.co.uk/journey-planner 是一個一般公開、不需登入、也沒有任何
@@ -670,23 +771,42 @@ def send_full_briefing(now_local, force_office_check):
                 f"🔗 [National Rail]({NATIONALRAIL_JOURNEY_PLANNER_URL})\n"
             )
 
+    # 罷工提醒跟平日/週末無關，每天都檢查——罷工也可能發生在週末。
+    strike_status = check_tube_strikes(now_local)
+    if strike_status is not None:
+        briefing += (
+            f"\n🚨 *Strike Alert (tomorrow)*\n"
+            f"{strike_status}\n"
+        )
+
     briefing += "\n祝你有美好的一天！💪"
     send_telegram(briefing)
 
 
-def send_evening_update():
+def send_evening_update(now_local):
     """平日 17:30 下班路線提醒。核心是 Office → Home 的路況，路線正常時完全不產生
-    內容（使用者只想在真的有中斷時才收到通知），沒有內容時完全不發送任何訊息。"""
+    內容（使用者只想在真的有中斷時才收到通知）。額外獨立檢查明天是否有罷工——跟路況
+    檢查不同，這個不需要「有問題才提」，只要明天真的有罷工就會發送，即使下班路線本身
+    正常。兩者都沒有內容時完全不發送任何訊息。"""
     home_route_status = check_home_from_office_route_disruption()
+    strike_status = check_tube_strikes(now_local)
 
-    if home_route_status is None:
+    msg_parts = []
+    if home_route_status is not None:
+        msg_parts.append(
+            f"🏠 *Office → Home Route Check*\n"
+            f"{home_route_status}\n\n"
+            f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
+        )
+    if strike_status is not None:
+        msg_parts.append(
+            f"🚨 *Strike Alert (tomorrow)*\n"
+            f"{strike_status}"
+        )
+
+    if not msg_parts:
         return
-    msg = (
-        f"🏠 *Office → Home Route Check*\n"
-        f"{home_route_status}\n\n"
-        f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
-    )
-    send_telegram(msg)
+    send_telegram("\n\n".join(msg_parts))
 
 
 def main():
@@ -702,7 +822,7 @@ def main():
     force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"
 
     if mode == "evening":
-        send_evening_update()
+        send_evening_update(now_local)
     elif mode == "poll_commands":
         poll_telegram_commands(now_local)
     else:
