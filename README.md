@@ -1,11 +1,9 @@
 # PersonalAssistant
 
 Sends a daily morning briefing (Lewisham weather and a commute route check)
-to Telegram, plus extra high-frequency
-route pings on Saturday and Sunday mornings and a weekday evening commute
-check. Telegram is also a two-way channel: sending `/briefing` to the bot
-triggers an on-demand copy of the full briefing instead of waiting for the
-07:00 run.
+to Telegram, plus a weekday evening commute check. Telegram is also a
+two-way channel: sending `/briefing` to the bot triggers an on-demand copy
+of the full briefing instead of waiting for the 07:00 run.
 
 ## What it sends
 
@@ -35,45 +33,21 @@ triggers an on-demand copy of the full briefing instead of waiting for the
   real-time status of this one specific Southeastern service (see notes
   below). Silent when the train is running normally; when disrupted, shows
   its status, delay, and any revised departure time
-- **Saturday and Sunday:** Route Check for Lewisham -> Charing Cross
-  (Southeastern), closest station to Virgin Active Strand - also checks
-  whether Lewisham station itself is closed for rail replacement buses, and
-  if so reports a suggested alternative route from Hither Green (see notes
-  below)
-- **Saturday only, and only if any are found:** Planned Road Events Near
-  Route - checks TfL's Road Disruption API for demonstrations/marches,
-  concerts, filming, or sporting events near the Strand/Charing Cross area
-  (see notes below). Skipped entirely if none are found. (Sunday doesn't get
-  its own planned-events check - the Friday evening warning already covers
-  the Saturday trip, and there's no equivalent day-ahead warning for Sunday)
-
-**Saturday and Sunday, high-frequency route-only pings** (`morning_briefing.py`,
-`MODE=route_only`, no weather/price content):
-
-- 10:30-10:55 BST, every 5 minutes
-- 11:00-11:15 BST, every 3 minutes
 
 **Monday-Friday, 17:30 BST/GMT** (`morning_briefing.py`, `MODE=evening`):
 
 - Office -> Home Route Check (Old Street [Northern line] -> Bank ->
   Lewisham [DLR], the reverse of the morning Office Route Check) - and
-  **only if disrupted**.
-- **Fridays only, and only if any are found:** the same Planned Road Events
-  check as the Saturday morning briefing, run a day ahead as an early
-  warning for the upcoming Saturday gym trip (see notes below for a caveat
-  on how much real lead time this gives).
-- If neither the route check nor (on Fridays) the planned-events check has
-  anything to report, no message is sent at all that run.
+  **only if disrupted**. If the route is clear, no message is sent at all
+  that run.
 
 **On demand, any time** (`morning_briefing.py`, `MODE=poll_commands`,
 polled every 1-2 minutes by an external scheduler - see notes below):
 
 - Sending `/briefing` (or `briefing`, case-insensitive) from the configured
   Telegram chat triggers the exact same full briefing as the 07:00 run -
-  all the usual day-of-week sections (Office Route Check and 08:10 train
-  check Mon-Fri, Gym Route Check on Saturday/Sunday, Planned Road Events on
-  Saturday only) react to whatever day it actually is when you send the
-  command.
+  the usual day-of-week sections (Office Route Check and 08:10 train check
+  Mon-Fri) react to whatever day it actually is when you send the command.
 - Messages from any chat other than the configured one, or text that
   doesn't match a recognized command, are silently ignored.
 
@@ -104,12 +78,10 @@ confusing duplicate message hours after the real one.
 
 ### cron-job.org jobs required
 
-All five jobs (now covering both Saturday and Sunday via the day-of-week
-field on the two high-frequency ping jobs) call the GitHub Actions "create a
-workflow dispatch event" API:
+All three jobs call the GitHub Actions "create a workflow dispatch event" API:
 `POST https://api.github.com/repos/deltadesignttwd-lgtm/PersonalAssistant/actions/workflows/{workflow_file}/dispatches`
 
-Common settings for all five jobs:
+Common settings for all three jobs:
 - **Method:** POST
 - **Headers:**
   - `Authorization: Bearer <PAT>` (see below)
@@ -126,10 +98,14 @@ Common settings for all five jobs:
 | Job | Workflow file | Schedule (Europe/London time) |
 |---|---|---|
 | Daily briefing | `morning-briefing.yml` | Every day, 07:00 |
-| Weekend ping (5 min) | `saturday-route-pings.yml` | Sat + Sun, 10:30-10:55, every 5 min |
-| Weekend ping (3 min) | `saturday-route-pings.yml` | Sat + Sun, 11:00-11:15, every 3 min |
 | Evening commute check | `evening-briefing.yml` | Weekdays (Mon-Fri), 17:30 |
 | Telegram command poll | `telegram-poll.yml` | Every day, every 1-2 minutes, all day |
+
+**If you still have the two "Weekend ping" cron-job.org jobs** (5 min and 3
+min, calling `saturday-route-pings.yml`) **from before the Sat/Sun gym route
+check was removed, delete them** - that workflow file no longer exists in
+this repo, so those jobs would now just get 404s from the GitHub API on
+every run.
 
 ### GitHub token for cron-job.org
 
@@ -142,15 +118,9 @@ you've also enabled cron-job.org's failure-notification emails.
 ## Manual testing
 
 All workflows accept manual `workflow_dispatch` runs from the Actions
-tab (or via the API). `morning-briefing.yml` additionally takes three inputs
+tab (or via the API). `morning-briefing.yml` additionally takes two inputs
 for testing outside their normal day-of-week:
 
-- `force_route_check` (boolean) - include the gym route check, and also the
-  planned-events check (two separate `if` blocks, but both also keyed off
-  this same flag) even on a day that's neither Saturday nor Sunday. Note
-  the gym route check itself runs on Saturday *or* Sunday, but the
-  planned-events check stays Saturday-only regardless of this flag's day -
-  it only widens which day you can force it on manually
 - `force_office_check` (boolean) - include the office route check, and also
   the 08:10 Lewisham -> Charing Cross train check (both keyed off this same
   flag), even on a non-weekday. Note the train check needs the target
@@ -160,25 +130,20 @@ for testing outside their normal day-of-week:
   data; pair this with `simulated_now` set to an actual future morning to
   test it properly
 - `simulated_now` (string, ISO datetime e.g. `2026-09-28T07:00:00`) -
-  simulate "now" as this date/time instead of the real current time, so
-  day-of-week-specific sections (office Mon-Fri, gym Saturday/Sunday) react
-  as if it were actually that day - unlike the two `force_*` flags above
-  (which only add a section on top of whatever the real day already
-  shows), this lets you see, for example, exactly what a genuine Monday
-  07:00 run would send, with no weekend-only content mixed in just because
-  today happens to be a Saturday. Leave blank to use the real current time.
+  simulate "now" as this date/time instead of the real current time, so the
+  weekday-only sections react as if it were actually that day - unlike
+  `force_office_check` above (which only adds a section on top of whatever
+  the real day already shows), this lets you see, for example, exactly what
+  a genuine Monday 07:00 run would send, with no weekend-only content mixed
+  in just because today happens to be a Saturday. Leave blank to use the
+  real current time.
 
-`evening-briefing.yml` takes one input, `simulated_now` (same format as
-`morning-briefing.yml`'s `simulated_now`) - the route check itself has no
-day-of-week gating in the script (that's left entirely to when cron-job.org
-triggers it), but the planned-events section only runs when "now" is a
-Friday, so this input is how to test that section on any other day. Leave
-it blank to use the real current time. If neither the route check nor (on a
-simulated or real Friday) the planned-events check has anything to report,
-nothing is sent to Telegram, but the Actions job log always prints both
-judgements (`check_home_from_office_route_disruption()`'s and
-`check_planned_events()`'s debug prints), so a test run's outcome is visible
-either way.
+`evening-briefing.yml` takes no inputs - the route check has no day-of-week
+gating in the script (that's left entirely to when cron-job.org triggers
+it). If there's no disruption to report, nothing is sent to Telegram, but
+the Actions job log always prints the check's result
+(`check_home_from_office_route_disruption()`'s debug print), so a test
+run's outcome is visible either way.
 
 `telegram-poll.yml` takes no inputs - a manual run just polls Telegram right
 now with whatever `telegram_offset.json` currently holds. Send `/briefing`
@@ -252,11 +217,10 @@ briefing without waiting for the real cron-job.org poll interval.
 
 ## Notes on the route checks
 
-- `check_office_route_disruption()` and `check_route_disruption()` both query
-  the TfL Line Status API directly by line id
-  (`https://api.tfl.gov.uk/Line/{ids}/Status`) rather than by "mode," since
-  mode-based queries for some lines (e.g. `elizabeth-line` as a mode name)
-  have been unreliable on TfL's API historically.
+- `check_office_route_disruption()` queries the TfL Line Status API directly
+  by line id (`https://api.tfl.gov.uk/Line/{ids}/Status`) rather than by
+  "mode," since mode-based queries for some lines (e.g. `elizabeth-line` as
+  a mode name) have been unreliable on TfL's API historically.
 - The office commute used to have two route options: home -> Canary Wharf
   (DLR) -> Liverpool Street (Elizabeth line), or home -> Bank (DLR) -> Old
   Street (Northern line). The user settled on the Bank/Old Street route as
@@ -369,11 +333,9 @@ briefing without waiting for the real cron-job.org poll interval.
   Keyword matching uses `_text_mentions_any()` (word-boundary regex, not
   plain substring `in`) so "Bank" doesn't spuriously match inside
   "Embankment".
-- Most Citymapper links in `morning_briefing.py` are decorative/fallback links
-  for the user to open manually if the TfL check itself fails - they are not
+- Citymapper links in `morning_briefing.py` are decorative/fallback links for
+  the user to open manually if the TfL check itself fails - they are not
   queried programmatically (Citymapper has no public routing-*status* API).
-  The one exception is `get_hither_green_to_strand_route()` (see note below),
-  which does call a real Citymapper journey-planning endpoint.
 - The Hang Seng GBP/HKD TT rate is fetched from a genuine public JSON API
   (`HANGSENG_TT_RATES_API_URL`), not scraped from HTML. The bank's own TT
   rates page doesn't render the numbers into static HTML - they're loaded
@@ -388,71 +350,14 @@ briefing without waiting for the real cron-job.org poll interval.
   "couldn't fetch" fallback with a manual-check link; only a successfully
   fetched rate below the threshold causes the section to be skipped
   entirely, with no message at all.
-- `check_route_disruption()` also checks whether Lewisham station itself is
-  closed (rail replacement buses running instead of trains) by scraping
-  nationalrail.co.uk's live departures board for Lewisham
-  (`NATIONALRAIL_LEWISHAM_URL`). The page renders fine with a plain
-  `requests.get()` and embeds its live data as JSON in a
-  `<script id="__NEXT_DATA__">` tag - `check_lewisham_replacement_buses()`
-  extracts that JSON and looks for a "replacement" signal in two places: the
-  station's live `nrccMessages` announcements, and any scheduled departure
-  in `services` whose `serviceType.category` is `BusReplacement`. It
-  deliberately does NOT do a blind text search across the whole page,
-  because the page's JS bundle also contains generic UI label strings (e.g.
-  `journeySummaryMicrocopy__replacementBusService`) that are always present
-  regardless of whether there's an actual disruption right now - matching
-  those would make the check permanently report "closed". When either
-  signal is found, `check_route_disruption()` reports Lewisham as closed
-  ahead of (and instead of) the usual TfL Southeastern line status check.
-- When Lewisham is reported closed, `check_route_disruption()` also calls
-  `get_hither_green_to_strand_route()` to report a suggested alternative
-  route (Hither Green -> Virgin Active Strand, the next station south on the
-  same line). Citymapper's own `/directions` page is a pure client-side SPA
-  with no server-rendered data at all - confirmed by checking for
-  `__NEXT_DATA__`/`__NUXT__`/any embedded JSON, none of which exist; all
-  content is rendered by its JS bundle after the page loads. But that JS
-  calls a plain, unauthenticated JSON API
-  (`citymapper.com/api/7/journeys?start=...&end=...`) to fetch the actual
-  route data. Calling that endpoint with no headers gets a Cloudflare 403,
-  but a normal browser-like `User-Agent` + `Referer` + `Accept: application/json`
-  (`_CITYMAPPER_HEADERS`) is enough to get a clean 200 with full journey
-  data (legs, modes, live departure times, price) - no browser, cookies, or
-  session needed. `get_hither_green_to_strand_route()` picks the first
-  journey in the `SUGGESTED` section and summarises its legs.
-- **Planned Road Events check (`check_planned_events()`)**, added after a
-  real miss on 2026-10-10: a central London demonstration disrupted the
-  Saturday gym trip (the Lewisham station closure that day triggered the
-  rail-replacement-bus alternative route, but the bus itself then had to
-  improvise a diversion mid-journey because of the march) with no advance
-  warning in that morning's briefing. `tfl.gov.uk/traffic/status` (the page
-  with the `dateTypeSelect`/`corridorIds` query params) is blocked by a bot
-  challenge for plain `requests` (403 "Verification required", the same
-  WAF pattern as Eventbrite's search pages) and can't be scraped directly.
-  Instead, `_get_planned_road_events()` calls TfL's Road Disruption API
-  (`https://api.tfl.gov.uk/Road/all/Disruption`) directly - no API key
-  needed - and filters to `category == "Planned events"` (covering
-  `Demonstration/March`, `Concert`, `Filming`, `Sporting` in `subCategory`).
-  `_is_planned_event_relevant()` then keeps only entries whose `location`
-  or `comments` mention a road/landmark on or near the Saturday gym walk
-  (Strand, Trafalgar Square, Whitehall, Charing Cross, Northumberland
-  Avenue, Embankment, Waterloo/Westminster Bridge, Aldwych, etc. - see
-  `_RELEVANT_PLANNED_EVENT_KEYWORDS`), matched with the same word-boundary
-  `_text_mentions_any()` used by the office-route relevance check (so
-  "Strand" doesn't spuriously match inside an unrelated longer word).
-  Confirmed against the actual 2026-10-10 demonstration (Victoria
-  Embankment -> Whitehall via Westminster Bridge/Waterloo Bridge/Strand/
-  Trafalgar Square) - it has `category: "Planned events"`,
-  `subCategory: "Demonstration/March"`, and its `location`/`comments` match
-  several of the keywords above.
-  **Known limitation (honestly unresolved):** every one of the ~126
-  disruptions live in the feed at diagnostic time had already started
-  (`startDateTime <= now`); none were more than 2 hours in the future. This
-  API looks like a "what's happening right now" feed rather than a forward
-  calendar, so there's no proof yet that querying it Friday evening or
-  Saturday 07:00 will actually surface a Saturday-afternoon event before it
-  starts - it may only appear once already under way. It's wired into both
-  the Friday evening briefing and the Saturday morning briefing anyway
-  (better than nothing, and the real lead time it provides can only be
-  determined by watching it run for real over the following weeks), with a
-  manual-check fallback link to the (bot-walled) TfL page if the API call
-  itself fails.
+- **2026-11-25: the Saturday/Sunday "gym route" check (Lewisham -> Charing
+  Cross, Virgin Active Strand) and its companion Planned Road Events check
+  were removed entirely** at the user's request - `check_route_disruption()`,
+  `check_lewisham_replacement_buses()`, `get_hither_green_to_strand_route()`,
+  `check_planned_events()`/`_get_planned_road_events()`, the
+  `saturday-route-pings.yml` high-frequency weekend workflow, and the
+  `force_route_check` input are all gone from the script and the repo. If
+  you're reading an older version of this README for context: that
+  functionality no longer exists, and any cron-job.org jobs that used to
+  call `saturday-route-pings.yml` should be deleted too (see the
+  cron-job.org section above).
