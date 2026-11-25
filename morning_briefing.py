@@ -24,9 +24,6 @@ HANGSENG_TT_RATES_API_URL = "https://rbwm-api.hsbc.com.hk/pws-hk-hase-rates-papi
 # 只有在 Bank Buy 匯率達到這個門檻時，才在每日晨報中顯示這個區塊
 GBP_HKD_BUY_RATE_THRESHOLD = 10.5
 
-# Citymapper 路線資訊 (Lewisham 至 Virgin Active Strand)
-CITYMAPPER_GYM_URL = "https://citymapper.com/trip/signature?signature=eJx9U9Fu2jAU%2FZXIryPF145J4G2qkDqtYlNZ14eqskxswGuwmWNKJ8S%2F104gSzRpb%2FG9x%2Bcen3tyQqVwaJYAMJKPEiQPTnhtTSgRVkCoKCPD4YSElE7VdfhGS%2B%2BEkaPk3hppzSh5%2FIoCsLTWyabP4IYBBgqjFN8AgbygEWDETsX2T%2B022iSfS6%2FfVNKSoXMA%2FHJcG6neAwiHY6U2ke75hKSuvTClaoQSNtQ5pSTKLC%2BTs0lWNIMxkDyO1YaH2xcwwuMpjtWdlY2Yo6he47nu7rN82lzHGWSx4y1X79rH9r066nordnxOMWVFFH3qSwHIcGcZut0Kp83m1tlgWyhvlZBH8Se0gsaehGhAHQaEkrMHr7hubhbar3xGi4ZXVA9CV8s5eokyvXADKY12b%2Fe8tAcTO9m1cGX5Xgm%2Ftm7HO%2FV9Xi6fIkUH6oseANFL%2B9q%2Fq8gIHm6CMtbfRMzANQJtAtbO7jozB5PmiwcO%2FJKFf5ZGxoDZf7fGcEFpO4sRQOfo1d7pUvG9atXSRq1Tmwvn4TWtmvxefQ9auFO%2FD6r2wbsIWdMcJipbpWwFeZrh9SRdsbxMczllUzrJlaQC9ZZyGv4DMUlwyRItCtb%2FB5ZzoAm7e2xy73VbJJhMUlykBH5ANsvIjBafMMwwHi%2B%2BPX1Z3kWCN%2BXq9gXs%2FAF%2FCxLH"
-
 # Citymapper 路線資訊 (平日通勤: Home → Bank [DLR] → Old Street [Northern line]
 # → Frank Reynolds Architects, Shepherdess Walk)。解碼確認為完整路線。
 # 原本還有另一條經 Canary Wharf [DLR] → Liverpool Street [Elizabeth line] 的路線，
@@ -37,15 +34,6 @@ CITYMAPPER_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlNt
 # Old Street → Old Street [Northern line] → Bank → Bank [DLR] → Lewisham → home)。
 # 解碼確認為 CITYMAPPER_OFFICE_URL 的反方向，使用同樣兩條 TfL line（Northern/DLR）。
 CITYMAPPER_HOME_FROM_OFFICE_URL = "https://citymapper.com/trip/signature?signature=eJyNlF1v2yAUhv%2BKxe3ihg9%2F4Nx1aqZNi9Kp2dSLqkLMkMSLAxkmS6so%2F32AnQ%2B3Wrs7n3PgfQ%2BPOexByQ0YRQgjSgcREFvDbaWVS%2BEixS4jlXDBHpRaG9G4T5CiqyRLMpoPYngFEc4pAW6h4mvpyxO5q5olX4ODS%2F4yrFJCPrkCcWEtF17iYQ9E1ViuSr8jI6TvnMFgXHZmKc6CE82LYFQp5vZ2awEcIgp9eq1F8N%2FxeuXj5ry%2FoCQoFBhlvmQ1k0%2BV9fXbWsyskdKyMfEd73sIEngiAD5yFXSXkosdf%2FbQKLzwtYarxom6lNFbK1kVcD2AqTZ2KY0Cj74ry03fOPRq9YaVeqtsByokjgLfam7n2qzZudkpEzO%2F8VTy3bXZx%2FYUZ76wTzc0fYaLCMEtXlrg13jR8D26fYGXCFF%2ByfB0N3ocCfwvjjeTuz7C4x%2Fp0UPpP%2FEFRjdMjHvkjj2xoP8SXvImPT8HRTcG7RTMjV6fLtdJekwgSelruniYvU3XGVB0nDNw8MffmKqUbCPb%2FgjyDRm56BS3q7jWSrig41epBTPy91Y21hEJsjQrUyKKeE4xjxOZ05iTMolLkeOfPCeCYAwuOO8BF8LIJgz%2FbCk37jILF0b3rttBNAl2g%2BjHV7%2Bp90yEycu70XP34%2FKZ%2BOR%2B8yq6k89K16KJrk25rKwsbRPeDVu1qzDEWYxgDMl3REYJHiXoA0QjCIfT2%2Fsvs89e8Y80TXv69PAXRWdfxg%3D%3D"
-
-# TfL 官方的 Central London Red Routes 即時路況頁面。這個頁面本身被 bot 驗證
-# (Cloudflare 一類的 WAF) 擋下，plain requests 拿到的是 403 "Verification
-# required" 頁面，無法直接 scrape；只用來當人工檢查的備用連結。
-TFL_CENTRAL_LONDON_TRAFFIC_STATUS_URL = (
-    "https://tfl.gov.uk/traffic/status/?dateTypeSelect=Now"
-    "&corridorIds=Central%20London%20Red%20Routes"
-)
-
 
 def _parse_iso(ts):
     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -241,29 +229,6 @@ def _get_tfl_line_disruptions(line_ids, max_attempts=3):
     return disruptions
 
 
-# Southeastern 是一個涵蓋整個東南倫敦/肯特郡的大型營運商，Line Status API 回報的是
-# 「整個公司」的狀況，而不是特定路線區段。實測發現 Bromley South（與 Lewisham→Charing
-# Cross 完全無關的另一條支線）的通知會被誤判為「本路線」中斷。因此改用 reason 文字中
-# 常見的 nationalrail.co.uk service-disruptions URL 解析出受影響車站，只有在明確辨識
-# 出的車站「不在」本路線上時才排除；無法辨識車站（例如全線性質的通知）則保守地維持標記。
-_RELEVANT_SOUTHEASTERN_STATION_SLUGS = {"lewisham", "london-bridge", "waterloo-east", "charing-cross"}
-
-
-def _extract_disruption_station_slug(reason_text):
-    match = re.search(r"service-disruptions/([a-z-]+)-\d{8}", reason_text)
-    return match.group(1) if match else None
-
-
-# nationalrail.co.uk 的即時發車看板頁面把資料以 Next.js SSR JSON 塞進
-# <script id="__NEXT_DATA__">，可用純 requests 取得。頁面的 JS bundle 裡也含有一堆
-# 「即使目前沒有任何中斷」也永遠存在的 UI 靜態文字（例如
-# journeySummaryMicrocopy__replacementBusService），因此只檢查真正即時的
-# nrccMessages（車站即時公告）與 services（實際班次清單）裡的 replacement bus 訊號，
-# 避免被那些固定不變的 UI 文字誤判成永遠都在中斷。
-NATIONALRAIL_LEWISHAM_URL = "https://www.nationalrail.co.uk/live-trains/departures/lewisham/"
-_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(\{.*?\})</script>')
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
-
 # nationalrail.co.uk 的 journey planner 頁面本身是 Next.js SPA（初次載入的 HTML 裡沒有
 # 實際班次資料，要等前端 JS 執行後才呼叫 API 取得），但實測發現它背後真正呼叫的
 # jpservices.nationalrail.co.uk/journey-planner 是一個一般公開、不需登入、也沒有任何
@@ -279,190 +244,6 @@ MORNING_TRAIN_ORIGIN_CRS = "LEW"
 MORNING_TRAIN_DESTINATION_CRS = "CHX"
 MORNING_TRAIN_DEPARTURE_HOUR = 8
 MORNING_TRAIN_DEPARTURE_MINUTE = 10
-
-_NATIONALRAIL_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-}
-
-
-def check_lewisham_replacement_buses():
-    """檢查 Lewisham 車站即時發車看板，看是否有 rail replacement bus 的即時訊號
-    （車站公告或實際班次列表），代表本站目前形同關閉"""
-    res = requests.get(NATIONALRAIL_LEWISHAM_URL, headers=_NATIONALRAIL_HEADERS, timeout=20)
-    res.raise_for_status()
-
-    match = _NEXT_DATA_RE.search(res.text)
-    if not match:
-        raise RuntimeError("在頁面中找不到 __NEXT_DATA__")
-    data = json.loads(match.group(1))
-
-    # 用 "x.get(key) or default" 而不是 "x.get(key, default)"：實測發現這個 API 在
-    # 「目前沒有任何即時公告」時會回傳 "nrccMessages": null（不是省略這個欄位，也不是
-    # 空陣列 []）。.get(key, default) 的 default 只有在 key 完全不存在時才會生效，key
-    # 存在但值是 null 一樣會拿到 None，導致後面對 None 做 for 迴圈直接丟出
-    # TypeError: 'NoneType' object is not iterable - 這幾乎每次「沒有公告」（最常見的
-    # 情況）都會發生，而不是罕見的個案。整條鏈路都改用這個寫法以防其他欄位也有同樣情況。
-    props = data.get("props") or {}
-    page_props = props.get("pageProps") or {}
-    live_trains_state = page_props.get("liveTrainsState") or {}
-    queries = live_trains_state.get("queries") or []
-
-    state = (queries[0].get("state") or {}) if queries else {}
-    state_data = state.get("data") or {}
-    pages = state_data.get("pages") or []
-    page = pages[0] if pages else {}
-
-    nrcc_messages = page.get("nrccMessages") or []
-    services = page.get("services") or []
-
-    notice_texts = []
-    for m in nrcc_messages:
-        text = _HTML_TAG_RE.sub("", m.get("message", ""))
-        if "replacement" in text.lower():
-            notice_texts.append(text)
-
-    replacement_services = sum(
-        1 for s in services if s.get("serviceType", {}).get("category") == "BusReplacement"
-    )
-
-    is_closed = bool(notice_texts) or replacement_services > 0
-    return is_closed, notice_texts, replacement_services
-
-
-# Citymapper 的 directions 頁面本身是純前端 SPA（無 SSR JSON，需執行 JS 才會有內容），
-# 但實測發現該頁面背後呼叫的 citymapper.com/api/7/journeys 是一個一般公開、不需登入
-# 的 JSON API：不帶任何 header 會被 Cloudflare 擋下（403），但帶上一般瀏覽器常見的
-# User-Agent / Referer / Accept 標頭即可直接用 requests 取得完整的即時路線資料
-# （時間、票價、各段交通方式），不需要真的啟動瀏覽器。
-CITYMAPPER_HITHER_GREEN_TO_STRAND_URL = (
-    "https://citymapper.com/directions?lang=en&startcoord=51.452024%2C-0.000944"
-    "&endcoord=51.510131%2C-0.121783&startname=Hither+Green&endname=Virgin+Active+Strand"
-    "&endaddress=Strand%2C+London%2C+UK"
-)
-_CITYMAPPER_JOURNEYS_API_URL = (
-    "https://citymapper.com/api/7/journeys"
-    "?start=51.452024%2C-0.000944"
-    "&end=51.510131%2C-0.121783"
-    "&eaddr=Strand%2C%20London%2C%20UK"
-    "&sname=Hither%20Green"
-    "&ename=Virgin%20Active%20Strand"
-    "&region_id=uk-london"
-    "&include_stepfree=1"
-    "&include_via_microtransit=1"
-    "&status_format=html"
-)
-_CITYMAPPER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Referer": "https://citymapper.com/directions",
-    "Accept": "application/json",
-}
-
-
-def get_hither_green_to_strand_route(max_attempts=3):
-    """呼叫 Citymapper journeys API，回傳從 Hither Green 到 Virgin Active Strand
-    的建議路線摘要文字（給 Lewisham 車站關閉時作為替代路線參考）。
-    實測過偶爾會超過 20 秒逾時，因此加上重試機制"""
-    last_error = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            res = requests.get(_CITYMAPPER_JOURNEYS_API_URL, headers=_CITYMAPPER_HEADERS, timeout=25)
-            res.raise_for_status()
-            data = res.json()
-            break
-        except requests.exceptions.RequestException as e:
-            last_error = e
-            print(f"Citymapper journeys API 錯誤（第 {attempt}/{max_attempts} 次嘗試）: {e}")
-            if attempt < max_attempts:
-                time.sleep(3 * attempt)
-    else:
-        raise last_error
-
-    sections = data.get("sections", [])
-    journeys = data.get("journeys", [])
-    suggested = next((s for s in sections if s.get("id") == "SUGGESTED"), None)
-    if not suggested or not suggested.get("journeys"):
-        raise RuntimeError("Citymapper 回應中找不到建議路線")
-    journey = journeys[suggested["journeys"][0]]
-
-    duration_min = round(journey.get("duration_seconds", 0) / 60)
-    price = journey.get("formatted_price", "N/A")
-
-    steps = []
-    for leg in journey.get("legs", []):
-        mode = leg.get("mode")
-        if mode == "walk":
-            mins = round(leg.get("duration_seconds", 0) / 60)
-            if mins > 0:
-                steps.append(f"🚶 Walk {mins} min")
-        elif mode == "transit":
-            routes = leg.get("routes", [])
-            route_name = routes[0].get("display_name") if routes else "Transit"
-            departures = leg.get("departures", [])
-            dep = departures[0] if departures else {}
-            time_name = dep.get("time_name", "")
-            dest = dep.get("destination_name", "")
-            steps.append(f"🚆 {route_name} to {dest} ({time_name})")
-
-    route_desc = " → ".join(steps) if steps else "Route details unavailable"
-    return f"{route_desc}\nTotal: {duration_min} min, {price}"
-
-
-def check_route_disruption():
-    """檢查前往 Virgin Active Strand 路線（Lewisham → Charing Cross, Southeastern 直達車）的即時路況"""
-    result = _check_route_disruption_impl()
-    print(f"Route Check 判斷結果: {result}")
-    return result
-
-
-def _check_route_disruption_impl():
-    try:
-        is_closed, notice_texts, replacement_services = check_lewisham_replacement_buses()
-    except Exception as e:
-        print(f"Lewisham 車站關閉檢查失敗: {e}")
-        is_closed, notice_texts, replacement_services = False, [], 0
-
-    if is_closed:
-        details = "; ".join(notice_texts) if notice_texts else f"{replacement_services} rail replacement bus service(s) found on the departure board"
-        print(f"Lewisham 車站關閉詳情: {details}")
-        message = "🔴 Lewisham station appears to be closed - rail replacement buses in operation.\n"
-        try:
-            route_summary = get_hither_green_to_strand_route()
-            message += f"\n🚏 Alternative route from Hither Green:\n{route_summary}\n"
-        except Exception as e:
-            print(f"Hither Green → Strand 路線查詢失敗: {e}")
-            message += f"\n🔗 [Check route from Hither Green]({CITYMAPPER_HITHER_GREEN_TO_STRAND_URL})\n"
-        message += f"🔗 [Check live departures]({NATIONALRAIL_LEWISHAM_URL})"
-        return message
-
-    try:
-        # Lewisham 有 Southeastern 直達車到 Charing Cross（步行至 Strand 約 5 分鐘），
-        # 因此只檢查與此路線相關的服務。注意：'charing-cross' 不是有效的 TfL line id
-        # （它是車站，不是路線），查了也不會比對到任何東西，故不使用。
-        disruptions = _get_tfl_line_disruptions(['southeastern'])
-
-        relevant = []
-        for d in disruptions:
-            slug = _extract_disruption_station_slug(d["reason"])
-            formatted = f"{d['line']}: {d['reason']}"
-            if slug and slug not in _RELEVANT_SOUTHEASTERN_STATION_SLUGS:
-                print(f"忽略與本路線無關的 Southeastern 通知（車站: {slug}）: {formatted}")
-                continue
-            relevant.append(formatted)
-
-        if not relevant:
-            return "This route is clear ✅"
-        details = "\n\n".join(relevant)
-        return f"🔴 This route is disrupted because:\n{details}"
-    except Exception as e:
-        print(f"路線檢查失敗: {e}")
-        return f"This route state check failed. You can check manually here: [Citymapper Route]({CITYMAPPER_GYM_URL})"
-
 
 # DLR 有多條分支（Bank/Tower Gateway<->Lewisham、Bank<->Woolwich Arsenal、
 # Stratford<->Beckton 等），Elizabeth line 則橫跨 Reading/Heathrow 到 Shenfield/Abbey
@@ -738,93 +519,6 @@ def _check_home_from_office_route_disruption_impl():
         )
 
 
-# TfL 的 Road Disruption API（/Road/all/Disruption）不需要任何 API key，回傳倫敦
-# 所有道路的即時中斷清單，其中 category 為 "Planned events" 的項目涵蓋示威/遊行
-# (Demonstration/March)、演唱會 (Concert)、拍片 (Filming)、體育賽事 (Sporting) 等
-# 計畫性道路事件，資料結構清楚（corridorIds、location、comments、起止時間），不用
-# 像 tfl.gov.uk/traffic/status 網頁那樣被 bot 驗證擋下（該網頁 plain requests 拿到
-# 的是 403 "Verification required"，無法直接 scrape，見
-# TFL_CENTRAL_LONDON_TRAFFIC_STATUS_URL）。
-#
-# 已知限制：實測這個 API 似乎只會在事件「已經開始」(startDateTime <= 查詢當下) 才會
-# 出現在清單裡——2026-10-08 查過當天示威時，全部 126 筆目前的中斷裡沒有一筆
-# startDateTime 是兩小時以上之後的「真正未來」時段。這代表這個檢查比較像是「現在路上
-# 在發生什麼」，不保證前一晚或清晨就能提早看到當天稍晚才開始的活動；但這仍然比完全沒有
-# 這個檢查好，而且不無法排除 TfL 真的會提早幾天公佈大型計畫性活動（只是目前這組樣本沒
-# 觀察到），所以還是把它接到 Friday 晚報跟 Saturday 早報，實際跑幾週後再看資料準不准。
-TFL_ROAD_DISRUPTION_API_URL = "https://api.tfl.gov.uk/Road/all/Disruption"
-
-
-def _get_planned_road_events():
-    """查詢 TfL Road Disruption API，回傳 category 為 "Planned events" 的原始
-    中斷清單（可能為空）。相關性篩選交給呼叫端（_is_planned_event_relevant()）。"""
-    res = requests.get(TFL_ROAD_DISRUPTION_API_URL, timeout=20)
-    res.raise_for_status()
-    data = res.json()
-    return [d for d in data if d.get("category") == "Planned events"]
-
-
-# Saturday gym 路線走的是 Lewisham (Southeastern) -> Charing Cross -> 步行到
-# Strand (Virgin Active Strand)。倫敦市中心的大型示威/遊行常會直接經過或封閉這些
-# 路/地標，即使活動本身不是在 Strand 上，路障/改道也常波及代替巴士的行駛路線——
-# 2026-10-10 的真實案例：示威從 Victoria Embankment 經 Westminster Bridge、York
-# Road、Waterloo Bridge、Strand 到 Trafalgar Square/Whitehall，代替巴士因此被迫
-# 中途改道。
-_RELEVANT_PLANNED_EVENT_KEYWORDS = (
-    "strand", "trafalgar square", "whitehall", "charing cross",
-    "northumberland avenue", "embankment", "waterloo bridge",
-    "westminster bridge", "aldwych", "the mall", "pall mall",
-    "cockspur street", "villiers street", "savoy",
-)
-
-
-def _is_planned_event_relevant(event):
-    text = f"{event.get('location', '')} {event.get('comments', '')}".lower()
-    return _text_mentions_any(text, _RELEVANT_PLANNED_EVENT_KEYWORDS)
-
-
-def _format_event_time(start, end):
-    try:
-        start_local = _parse_iso(start).astimezone(LOCAL_TZ).strftime("%H:%M")
-        end_local = _parse_iso(end).astimezone(LOCAL_TZ).strftime("%H:%M")
-        return f"{start_local} - {end_local}"
-    except (ValueError, AttributeError):
-        return f"{start} - {end}"
-
-
-def check_planned_events():
-    """檢查與 Saturday gym 路線（Lewisham -> Charing Cross -> 步行到 Strand）相關
-    的計畫性道路事件（示威/遊行、演唱會、拍片、體育賽事）。沒有相關事件時回傳
-    None。已知限制見 TFL_ROAD_DISRUPTION_API_URL 上方的說明。"""
-    result = _check_planned_events_impl()
-    print(f"Planned Events Check 判斷結果: {result}")
-    return result
-
-
-def _check_planned_events_impl():
-    try:
-        events = _get_planned_road_events()
-    except Exception as e:
-        print(f"Planned events 查詢失敗: {e}")
-        return (
-            "couldn't check for planned road events (demonstrations/closures). "
-            f"Check manually: [TfL Traffic Status]({TFL_CENTRAL_LONDON_TRAFFIC_STATUS_URL})"
-        )
-
-    relevant = [e for e in events if _is_planned_event_relevant(e)]
-    if not relevant:
-        return None
-
-    sections = []
-    for e in relevant:
-        sub = e.get("subCategory", "Planned event")
-        loc = e.get("location", "")
-        time_range = _format_event_time(e.get("startDateTime"), e.get("endDateTime"))
-        comment = e.get("comments", "")
-        sections.append(f"*{sub}* ({time_range})\n{loc}\n{comment}")
-    return "\n\n".join(sections)
-
-
 def send_telegram(msg, max_attempts=3):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("TG_BOT_TOKEN / TG_CHAT_ID 未設定，請確認 repository secrets。")
@@ -915,7 +609,7 @@ def poll_telegram_commands(now_local):
 
         if text in _BRIEFING_COMMANDS:
             print(f"收到 on-demand 晨報指令: {text!r}")
-            send_full_briefing(now_local, False, False)
+            send_full_briefing(now_local, False)
             triggered = True
         else:
             print(f"收到不認識的訊息，忽略: {text!r}")
@@ -924,10 +618,8 @@ def poll_telegram_commands(now_local):
     print(f"已處理到 update_id={highest_update_id}" + ("（已觸發指令回應）" if triggered else ""))
 
 
-def send_full_briefing(now_local, force_route_check, force_office_check):
+def send_full_briefing(now_local, force_office_check):
     today = now_local.strftime("%Y-%m-%d (%a)")
-    is_saturday = now_local.weekday() == 5  # 5 = Saturday
-    is_sunday = now_local.weekday() == 6  # 6 = Sunday
     is_weekday = now_local.weekday() < 5  # 0-4 = Mon-Fri
 
     curr_temp, temp_range, rain_msg = get_weather_forecast()
@@ -978,69 +670,23 @@ def send_full_briefing(now_local, force_route_check, force_office_check):
                 f"🔗 [National Rail]({NATIONALRAIL_JOURNEY_PLANNER_URL})\n"
             )
 
-    if is_saturday or is_sunday or force_route_check:
-        route_status = check_route_disruption()
-        day_label = "Saturday" if is_saturday else "Sunday" if is_sunday else "Weekend"
-        briefing += (
-            f"\n🏋️ *{day_label} Route Check (Virgin Active Strand)*\n"
-            f"{route_status}\n\n"
-            f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})\n"
-        )
-
-    if is_saturday or force_route_check:
-        planned_events = check_planned_events()
-        if planned_events is not None:
-            briefing += (
-                f"\n🚧 *Planned Road Events Near Route*\n"
-                f"{planned_events}\n"
-            )
-
     briefing += "\n祝你有美好的一天！💪"
     send_telegram(briefing)
 
 
-def send_route_only_update(now_local):
-    """Saturday/Sunday 10:30-11:15 高頻路線提醒，只回報路況，不含天氣/電價。
-    跟 7am 的 Saturday/Sunday Route Check 一樣沒有 day-of-week 判斷，完全由
-    cron-job.org 何時呼叫這個 workflow 決定"""
-    route_status = check_route_disruption()
+def send_evening_update():
+    """平日 17:30 下班路線提醒。核心是 Office → Home 的路況，路線正常時完全不產生
+    內容（使用者只想在真的有中斷時才收到通知），沒有內容時完全不發送任何訊息。"""
+    home_route_status = check_home_from_office_route_disruption()
+
+    if home_route_status is None:
+        return
     msg = (
-        f"🕐 *Route Check ({now_local.strftime('%H:%M')})*\n"
-        f"{route_status}\n\n"
-        f"🔗 [Open Citymapper Route]({CITYMAPPER_GYM_URL})"
+        f"🏠 *Office → Home Route Check*\n"
+        f"{home_route_status}\n\n"
+        f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
     )
     send_telegram(msg)
-
-
-def send_evening_update(now_local):
-    """平日 17:30 下班路線提醒。核心是 Office → Home 的路況，路線正常時這部分完全
-    不產生內容（使用者只想在真的有中斷時才收到通知），這點與 route_only 模式
-    （Saturday 高頻提醒，無論路況如何都會發送）不同。
-    週五額外檢查 Saturday gym 路線附近週末計畫性道路事件（示威/演唱會等）——這是
-    提早示警，即使當下路線正常也會獨立發送，不像路線檢查那樣只在有中斷時才發。
-    兩部分都沒有內容時完全不發送任何訊息。"""
-    home_route_status = check_home_from_office_route_disruption()
-    is_friday = now_local.weekday() == 4  # 4 = Friday
-
-    msg_parts = []
-    if home_route_status is not None:
-        msg_parts.append(
-            f"🏠 *Office → Home Route Check*\n"
-            f"{home_route_status}\n\n"
-            f"🔗 [Open Citymapper Route]({CITYMAPPER_HOME_FROM_OFFICE_URL})"
-        )
-
-    if is_friday:
-        planned_events = check_planned_events()
-        if planned_events is not None:
-            msg_parts.append(
-                f"🚧 *Planned Road Events This Weekend (Saturday gym route)*\n"
-                f"{planned_events}"
-            )
-
-    if not msg_parts:
-        return
-    send_telegram("\n\n".join(msg_parts))
 
 
 def main():
@@ -1053,17 +699,14 @@ def main():
     else:
         now_local = datetime.now(LOCAL_TZ)
     mode = os.environ.get("MODE", "full").strip().lower()
-    force_route_check = os.environ.get("FORCE_ROUTE_CHECK", "").lower() == "true"
     force_office_check = os.environ.get("FORCE_OFFICE_CHECK", "").lower() == "true"
 
-    if mode == "route_only":
-        send_route_only_update(now_local)
-    elif mode == "evening":
-        send_evening_update(now_local)
+    if mode == "evening":
+        send_evening_update()
     elif mode == "poll_commands":
         poll_telegram_commands(now_local)
     else:
-        send_full_briefing(now_local, force_route_check, force_office_check)
+        send_full_briefing(now_local, force_office_check)
 
 
 if __name__ == "__main__":

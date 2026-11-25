@@ -8,10 +8,6 @@ on:
   # workflow_dispatch runs consistently start within seconds, unlike schedule runs.
   workflow_dispatch:
     inputs:
-      force_route_check:
-        description: "Include the Virgin Active Strand route check even if today isn't Saturday (for testing)"
-        type: boolean
-        default: false
       force_office_check:
         description: "Include the office route check even if today isn't a weekday (for testing)"
         type: boolean
@@ -41,7 +37,6 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           MODE: full
-          FORCE_ROUTE_CHECK: ${{ github.event.inputs.force_route_check }}
           FORCE_OFFICE_CHECK: ${{ github.event.inputs.force_office_check }}
           SIMULATED_NOW: ${{ github.event.inputs.simulated_now }}
         run: python morning_briefing.py
