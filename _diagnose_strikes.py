@@ -1,44 +1,52 @@
-from playwright.sync_api import sync_playwright
+import requests
 
-URL = "https://tfl.gov.uk/status-updates/strikes"
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
 
-captured = []
+MODES = "tube,dlr,overground,elizabeth-line,tram"
+url = f"https://api.tfl.gov.uk/Line/Mode/{MODES}/Status?detail=true"
+res = requests.get(url, headers=HEADERS, timeout=20)
+print("STATUS:", res.status_code)
+data = res.json()
+print("Number of lines returned:", len(data))
 
-with sync_playwright() as p:
-    browser = p.chromium.launch()
-    page = browser.new_page()
+found_any_strike_mention = False
+for line in data:
+    for status in line.get("lineStatuses", []):
+        reason = status.get("reason", "") or ""
+        disruption = status.get("disruption") or {}
+        description = disruption.get("description", "") or ""
+        additional_info = disruption.get("additionalInfo", "") or ""
+        combined = f"{reason} {description} {additional_info}"
+        if "strike" in combined.lower() or "industrial action" in combined.lower():
+            found_any_strike_mention = True
+            print(f"\n=== STRIKE MENTION on {line.get('name')} ===")
+            print("statusSeverityDescription:", status.get("statusSeverityDescription"))
+            print("reason:", reason)
+            print("disruption.category:", disruption.get("category"))
+            print("disruption.categoryDescription:", disruption.get("categoryDescription"))
+            print("disruption.description:", description[:1000])
+            print("disruption.additionalInfo:", additional_info[:1000])
+            print("validityPeriods:", disruption.get("validityPeriods"))
 
-    def on_response(response):
-        url = response.url
-        if url.split("?")[0].endswith((".js", ".css", ".woff", ".woff2", ".png", ".svg", ".jpg", ".ico")):
-            return
-        ctype = response.headers.get("content-type", "")
-        body_snippet = ""
-        if "json" in ctype.lower():
-            try:
-                body_snippet = response.text()[:500]
-            except Exception as e:
-                body_snippet = f"<could not read body: {e}>"
-        captured.append((response.request.method, url, response.status, ctype, body_snippet))
+if not found_any_strike_mention:
+    print("\nNo strike/industrial action mentions found in current Status data for these modes.")
 
-    page.on("response", on_response)
-    try:
-        page.goto(URL, wait_until="networkidle", timeout=45000)
-    except Exception as e:
-        print("goto/networkidle issue (continuing anyway):", e)
-    page.wait_for_timeout(5000)
-
-    print("Page title:", page.title())
-    print("Final URL:", page.url)
-
-    body_text = page.inner_text("body")
-    print("\n===== Page body text (first 3000 chars) =====")
-    print(body_text[:3000])
-
-    print(f"\n===== Captured {len(captured)} non-static responses =====")
-    for method, url, status, ctype, body in captured:
-        print(f"{method} {status} [{ctype}] {url}")
-        if body:
-            print("  BODY:", body.replace("\n", " ")[:500])
-
-    browser.close()
+# Also check the dedicated Disruption endpoint which sometimes carries more detail
+url2 = f"https://api.tfl.gov.uk/Line/Mode/{MODES}/Disruption"
+res2 = requests.get(url2, headers=HEADERS, timeout=20)
+print("\n\n===== /Disruption endpoint =====")
+print("STATUS:", res2.status_code)
+data2 = res2.json()
+print("Number of disruption entries:", len(data2))
+for d in data2:
+    combined = f"{d.get('description','')} {d.get('additionalInfo','')}"
+    if "strike" in combined.lower() or "industrial action" in combined.lower():
+        print("\n=== STRIKE MENTION ===")
+        print(d)
+    else:
+        print("-", d.get("category"), "|", (d.get("description") or "")[:150])
