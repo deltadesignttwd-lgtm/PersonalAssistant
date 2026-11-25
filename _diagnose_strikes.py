@@ -1,45 +1,44 @@
-import re
-import requests
+from playwright.sync_api import sync_playwright
 
 URL = "https://tfl.gov.uk/status-updates/strikes"
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
+captured = []
 
-res = requests.get(URL, headers=HEADERS, timeout=20)
-print("STATUS:", res.status_code)
-print("LENGTH:", len(res.text))
-print("FIRST 1000 CHARS:")
-print(res.text[:1000])
-print("---")
+with sync_playwright() as p:
+    browser = p.chromium.launch()
+    page = browser.new_page()
 
-for marker in ["__NEXT_DATA__", "application/ld+json", "strike", "Strike", "verification",
-               "captcha", "cloudflare", "Just a moment", "window.__", "api/", "tube strike",
-               "Industrial action"]:
-    count = res.text.lower().count(marker.lower())
-    print(f"MARKER {marker!r}: {count} occurrences")
+    def on_response(response):
+        url = response.url
+        if url.split("?")[0].endswith((".js", ".css", ".woff", ".woff2", ".png", ".svg", ".jpg", ".ico")):
+            return
+        ctype = response.headers.get("content-type", "")
+        body_snippet = ""
+        if "json" in ctype.lower():
+            try:
+                body_snippet = response.text()[:500]
+            except Exception as e:
+                body_snippet = f"<could not read body: {e}>"
+        captured.append((response.request.method, url, response.status, ctype, body_snippet))
 
-print("---")
-scripts = re.findall(r'<script[^>]*src="([^"]+)"', res.text)
-print(f"Found {len(scripts)} <script src> tags, first 20:")
-for s in scripts[:20]:
-    print(" ", s)
+    page.on("response", on_response)
+    try:
+        page.goto(URL, wait_until="networkidle", timeout=45000)
+    except Exception as e:
+        print("goto/networkidle issue (continuing anyway):", e)
+    page.wait_for_timeout(5000)
 
-print("---")
-json_blocks = re.findall(r'<script[^>]*type="application/json"[^>]*>(.*?)</script>', res.text, re.DOTALL)
-print(f"Found {len(json_blocks)} inline application/json script blocks")
-for i, b in enumerate(json_blocks):
-    print(f"BLOCK {i} length:", len(b))
-    if "strike" in b.lower():
-        print("  -> contains 'strike', first 1500 chars:")
-        print(" ", b[:1500])
+    print("Page title:", page.title())
+    print("Final URL:", page.url)
 
-ldjson_blocks = re.findall(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', res.text, re.DOTALL)
-print(f"Found {len(ldjson_blocks)} ld+json blocks")
-for b in ldjson_blocks[:3]:
-    print(b[:800])
+    body_text = page.inner_text("body")
+    print("\n===== Page body text (first 3000 chars) =====")
+    print(body_text[:3000])
+
+    print(f"\n===== Captured {len(captured)} non-static responses =====")
+    for method, url, status, ctype, body in captured:
+        print(f"{method} {status} [{ctype}] {url}")
+        if body:
+            print("  BODY:", body.replace("\n", " ")[:500])
+
+    browser.close()
