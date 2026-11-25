@@ -33,13 +33,22 @@ of the full briefing instead of waiting for the 07:00 run.
   real-time status of this one specific Southeastern service (see notes
   below). Silent when the train is running normally; when disrupted, shows
   its status, delay, and any revised departure time
+- **Every day (not just weekdays), and only if one is found:** Strike Alert
+  - checks whether a tube/DLR/Overground/Elizabeth line/Tram strike is
+    scheduled for *tomorrow* (see notes below for how, and an honest
+    limitation on how far ahead this can actually warn)
 
 **Monday-Friday, 17:30 BST/GMT** (`morning_briefing.py`, `MODE=evening`):
 
 - Office -> Home Route Check (Old Street [Northern line] -> Bank ->
-  Lewisham [DLR], the reverse of the morning Office Route Check) - and
-  **only if disrupted**. If the route is clear, no message is sent at all
-  that run.
+  Lewisham [DLR], the reverse of the morning Office Route Check) - **only
+  if disrupted**.
+- **Every day, and only if one is found:** the same Strike Alert as the
+  morning briefing - sent independently of the route check above, i.e. a
+  strike tomorrow is reported even on an evening where the commute itself
+  is perfectly clear.
+- If neither the route check nor the strike check has anything to report,
+  no message is sent at all that run.
 
 **On demand, any time** (`morning_briefing.py`, `MODE=poll_commands`,
 polled every 1-2 minutes by an external scheduler - see notes below):
@@ -47,7 +56,8 @@ polled every 1-2 minutes by an external scheduler - see notes below):
 - Sending `/briefing` (or `briefing`, case-insensitive) from the configured
   Telegram chat triggers the exact same full briefing as the 07:00 run -
   the usual day-of-week sections (Office Route Check and 08:10 train check
-  Mon-Fri) react to whatever day it actually is when you send the command.
+  Mon-Fri, Strike Alert every day) react to whatever day it actually is
+  when you send the command.
 - Messages from any chat other than the configured one, or text that
   doesn't match a recognized command, are silently ignored.
 
@@ -136,14 +146,19 @@ for testing outside their normal day-of-week:
   the real day already shows), this lets you see, for example, exactly what
   a genuine Monday 07:00 run would send, with no weekend-only content mixed
   in just because today happens to be a Saturday. Leave blank to use the
-  real current time.
+  real current time. This also shifts what counts as "tomorrow" for the
+  Strike Alert check.
 
-`evening-briefing.yml` takes no inputs - the route check has no day-of-week
+`evening-briefing.yml` takes one input, `simulated_now` (same format as
+`morning-briefing.yml`'s) - the route check itself has no day-of-week
 gating in the script (that's left entirely to when cron-job.org triggers
-it). If there's no disruption to report, nothing is sent to Telegram, but
-the Actions job log always prints the check's result
-(`check_home_from_office_route_disruption()`'s debug print), so a test
-run's outcome is visible either way.
+it), but the Strike Alert's "is there a strike tomorrow" calculation needs
+a "now" to compute tomorrow's date from, so this is how to test it against
+a specific date rather than always using the real current time. If neither
+check has anything to report, nothing is sent to Telegram, but the Actions
+job log always prints both results (`check_home_from_office_route_disruption()`'s
+and `check_tube_strikes()`'s debug prints), so a test run's outcome is
+visible either way.
 
 `telegram-poll.yml` takes no inputs - a manual run just polls Telegram right
 now with whatever `telegram_offset.json` currently holds. Send `/briefing`
@@ -179,6 +194,62 @@ briefing without waiting for the real cron-job.org poll interval.
 - Both sources failing still returns the original `"N/A"`/`"擷取失敗"`
   fallback rather than raising - the weather section degrades, it never
   breaks the rest of the briefing.
+
+## Notes on the strike check
+
+- The obvious source for this was the official page,
+  `tfl.gov.uk/status-updates/strikes`, which lists the actual strike dates.
+  It can't be used at all: a plain `requests.get()` gets an immediate `403`,
+  and - unlike the JS-rendered SPAs this project has scraped before (where
+  a headless browser just needed to let the page's own JS run) - driving a
+  real headless Chromium at the page lands on an interactive Cloudflare
+  Turnstile "Verification required" challenge and just sits there timing
+  out, since nothing can click through the human-facing CAPTCHA. There is
+  no way through this one with the tools available here.
+- `check_tube_strikes()` instead queries `api.tfl.gov.uk` directly -
+  `/Line/Mode/{modes}/Status?detail=true` for
+  `tube,dlr,overground,elizabeth-line,tram` (`TFL_STRIKE_CHECK_MODES`).
+  This is a different subdomain from the strikes page and isn't behind the
+  same WAF - it's the same API this project already uses for the Office
+  Route Check and used to use for the (now-removed) gym route check, just
+  queried by mode instead of by specific line id, since a strike can hit
+  any line, not just the two or three the commute checks care about.
+  `_get_strike_disruptions()` scans each line's `lineStatuses[].reason` and
+  `.disruption.description`/`.additionalInfo` for the words "strike" or
+  "industrial action" (case-insensitive, word-boundary matched via the same
+  `_text_mentions_any()` used elsewhere).
+- When a match includes `disruption.validityPeriods` (TfL's structured
+  `fromDate`/`toDate` range for the disruption), `_strike_covers_date()`
+  only treats it as relevant if tomorrow's date falls inside that range -
+  this is what makes the alert a "day before" reminder rather than firing
+  every single day a strike is mentioned anywhere in the feed. If a match
+  has *no* validity periods at all, it's surfaced anyway rather than
+  dropped - unlike the "silent unless genuinely relevant" default used by
+  the office/home route checks, a missed real strike warning is worse than
+  an occasional extra heads-up for a safety-relevant alert like this one.
+- **Known limitation (honestly unresolved, same situation as the earlier -
+  now removed - Planned Events check had):** there was no real strike
+  scheduled while building this, so there was nothing to test the actual
+  lead time against. It's unconfirmed whether TfL's API populates a
+  strike's `reason`/`validityPeriods` days in advance, or only once the
+  strike is essentially already starting (the latter would make this at
+  best a same-day alert rather than a genuine day-before warning,
+  mirroring what happened with the Road Disruption API for demonstrations).
+  This can only be confirmed for real the next time a strike is actually
+  announced.
+- A query failure (`_get_strike_disruptions()` raising after its 3 retries)
+  makes `check_tube_strikes()` return `None` rather than a "couldn't check"
+  fallback message - this is deliberately different from every other check
+  in this script. A failed strike check just means "try again next
+  scheduled run" (07:00 or 17:30 the same or next day), and isn't worth a
+  dedicated error message of its own on top of the two other checks that
+  already have one.
+- Unlike the office/home route checks (which only ever appear in the
+  briefing when something's actually disrupted), the Strike Alert runs
+  every single day regardless of weekday, since strikes aren't limited to
+  weekdays, and in `send_evening_update()` it's reported independently of
+  the route check - a clear commute and a strike tomorrow aren't mutually
+  exclusive, so both can and do show up (or not) on their own terms.
 
 ## Notes on the Telegram on-demand briefing command
 
